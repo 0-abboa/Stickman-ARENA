@@ -28,6 +28,12 @@ const Utils = {
         return color;
     },
 
+    // '#rrggbb' -> 'r,g,b' for building rgba() strings
+    hexRgb: (hex) => {
+        const n = parseInt(String(hex).replace('#', ''), 16) || 0;
+        return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
+    },
+
     lerp: (start, end, t) => {
         return start * (1 - t) + end * t;
     }
