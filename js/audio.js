@@ -3,6 +3,7 @@ const AudioSys = {
     masterGain: null,
     musicInterval: null,
     isMuted: false,
+    muteSfx: false,   // silences effects (not music) for the menu's demo fight
 
     init: function() {
         window.AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -55,31 +56,37 @@ const AudioSys = {
 
     // SFX Presets
     playJump: function() {
+        if (this.muteSfx) return;
         this.playTone(300, 'square', 0.1, 0.5);
         setTimeout(() => this.playTone(450, 'square', 0.1, 0.5), 50);
     },
 
     playAttack: function() {
+        if (this.muteSfx) return;
         this.playNoise(0.1, 0.5);
     },
 
     playHit: function() {
+        if (this.muteSfx) return;
         this.playTone(150, 'sawtooth', 0.1, 0.8);
         this.playNoise(0.1, 0.5);
     },
 
     playShoot: function() {
+        if (this.muteSfx) return;
         this.playTone(800, 'triangle', 0.1, 0.3);
         setTimeout(() => this.playTone(400, 'triangle', 0.1, 0.3), 50);
     },
 
     playPowerup: function() {
+        if (this.muteSfx) return;
         this.playTone(400, 'sine', 0.1);
         setTimeout(() => this.playTone(600, 'sine', 0.1), 100);
         setTimeout(() => this.playTone(800, 'sine', 0.2), 200);
     },
 
     playAngelicaFinale: function() {
+        if (this.muteSfx) return;
         // Dramatic sequence (Transformation)
         // Fast, energetic arpeggios
         let note = 0;
@@ -99,6 +106,7 @@ const AudioSys = {
     },
 
     playDramaticIntro: function() {
+        if (this.muteSfx) return;
         // "O Gloriosa Virginum" style - Slow, solemn, choral
         this.stopMusic();
         if (!this.ctx) this.init();
@@ -290,6 +298,7 @@ const AudioSys = {
     },
 
     playAngelicaFinale: function() {
+        if (this.muteSfx) return;
         if (!this.ctx || this.isMuted) return;
         
         // "Suor Angelica" Finale style - Slow, rising, major chords
@@ -320,6 +329,7 @@ const AudioSys = {
     },
 
     playShield: function() {
+        if (this.muteSfx) return;
         if (!this.ctx || this.isMuted) return;
         // Sci-fi shield activation sound
         const osc = this.ctx.createOscillator();
@@ -338,5 +348,60 @@ const AudioSys = {
         
         osc.start();
         osc.stop(this.ctx.currentTime + 0.3);
+    },
+
+    // Rising/falling noise sweep through a filter (swings, whooshes)
+    sweep: function(from, to, duration, vol, type) {
+        if (!this.ctx || this.isMuted || this.muteSfx) return;
+        const t = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = type || 'sawtooth';
+        osc.frequency.setValueAtTime(from, t);
+        osc.frequency.exponentialRampToValueAtTime(to, t + duration);
+        gain.gain.setValueAtTime(vol, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
+        osc.connect(gain);
+        gain.connect(this.masterGain);
+        osc.start();
+        osc.stop(t + duration);
+    },
+
+    playSwing: function(heavy) {
+        if (this.muteSfx) return;
+        this.playNoise(heavy ? 0.22 : 0.12, heavy ? 0.6 : 0.4);
+        this.sweep(heavy ? 220 : 600, heavy ? 60 : 180, heavy ? 0.25 : 0.12, heavy ? 0.35 : 0.2);
+    },
+
+    playGun: function(type) {
+        if (this.muteSfx) return;
+        switch (type) {
+            case 'bullet': this.playNoise(0.06, 0.45); this.sweep(900, 200, 0.08, 0.25, 'square'); break;
+            case 'pellet': this.playNoise(0.18, 0.8); this.sweep(300, 60, 0.2, 0.4); break;
+            case 'sniper': this.playNoise(0.3, 0.9); this.sweep(1400, 80, 0.35, 0.45, 'square'); break;
+            case 'arrow': this.sweep(500, 900, 0.12, 0.25, 'triangle'); break;
+            case 'grenade': this.sweep(200, 90, 0.15, 0.5, 'sine'); this.playNoise(0.08, 0.3); break;
+            case 'rocket': this.playNoise(0.4, 0.5); this.sweep(120, 300, 0.4, 0.3); break;
+            case 'boomerang': this.sweep(300, 700, 0.3, 0.2, 'triangle'); break;
+            case 'bolt': this.sweep(700, 1300, 0.08, 0.3, 'triangle'); this.playNoise(0.05, 0.2); break;
+            case 'kunai': this.sweep(900, 1500, 0.1, 0.18, 'triangle'); break;
+            case 'flame': if (Math.random() < 0.35) this.playNoise(0.12, 0.18); break;
+            case 'plasma': this.sweep(1200, 300, 0.15, 0.3, 'sawtooth'); break;
+            case 'bomb': this.sweep(250, 120, 0.12, 0.35, 'sine'); break;
+            case 'seeker': this.playNoise(0.3, 0.4); this.sweep(200, 600, 0.35, 0.3); break;
+            default: this.playShoot();
+        }
+    },
+
+    playExplosion: function() {
+        if (this.muteSfx) return;
+        this.playNoise(0.7, 1.0);
+        this.sweep(160, 30, 0.6, 0.8, 'sine');
+    },
+
+    playKO: function() {
+        if (this.muteSfx) return;
+        this.sweep(500, 70, 0.5, 0.5, 'square');
+        this.playNoise(0.3, 0.6);
     },
 };
