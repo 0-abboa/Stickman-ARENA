@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- jqrg-tip-lines:inline -->
+<script>window.__JqrgLoaderLines=["Cool fact: Tetris was invented in 1984 by Alexey Pajitnov.","Cool fact: The first computer mouse was carved out of a block of wood.","Cool fact: Mario was originally named Jumpman.","Cool fact: A real moth caused the first computer 'bug' back in 1947.","Cool fact: A Game Boy once survived a bombing and still booted up.","Cool fact: The very first website (info.cern.ch) is still online today.","Cool fact: Pac-Man's design was inspired by a pizza missing one slice.","Cool fact: The Konami Code is up, up, down, down, left, right, left, right, B, A.","Cool fact: A 'nibble' is half a byte. Yes, really.","Cool fact: 1024 bytes is technically a kibibyte.","Cool fact: HTTP 418 means 'I'm a teapot.' It's in the spec.","Cool fact: A jiffy is a real unit of time, about 1/100 of a second.","Cool fact: There's no place like 127.0.0.1.","Cool fact: The first Pong was a training exercise for an Atari new hire.","Cool fact: There are 10 kinds of people: those who read binary and those who don't.","Cool fact: Doom has been ported to a pregnancy test.","Cool fact: Minecraft's first version was hacked together in just six days.","Cool fact: The Sims series has sold over 200 million copies.","Cool fact: Wii Sports was once the best-selling video game on Earth.","Cool fact: PlayStation was almost just a Nintendo accessory.","Cool fact: A floppy disk holds about 1.4MB. A phone photo today is bigger.","Cool fact: ENIAC, an early computer, weighed about 27 tons.","Cool fact: Linux quietly runs most of the world's web servers.","Cool fact: The @ symbol predates email by hundreds of years.","Cool fact: The first emoji set was designed in Japan in 1999.","Cool fact: Hyperlinks were proposed all the way back in 1965.","Cool fact: Pixar started life as a hardware company.","Cool fact: The first banner ad ran in 1994 with a 44% click-through rate.","Cool fact: Wikipedia has more than 60 million articles across all languages.","Cool fact: The cursor blink rate is measured in 'Hz of patience.'","To understand recursion, you must first understand recursion.","There are two hard problems in CS: cache invalidation, naming, and off-by-one errors.","Have you tried turning it off and on again?","It works on my machine.","Coffee.exe has stopped working.","Real programmers count from 0.","Why do programmers prefer dark mode? Light attracts bugs.","!false — it's funny because it's true.","CSS: where !important is rarely important.","Tabs vs spaces: the eternal flame war.","There are 10 types of bugs: the ones you find and the ones you don't.","Programmers don't sleep, they recharge their RAM.","The best error message is the one that never shows up.","Reading other people's code is harder than writing your own.","The cloud is just someone else's computer.","60% of the game files were added using a chromebook.","Hang tight. The bytes are on their way.","Pixels are warming up.","Almost there. Almost.","Big adventures start with small loading bars.","The fun is just around the corner.","Buckle up. Here we go.","Bits are flying as fast as they can.","Caffeinating the servers.","Convincing the bytes to cooperate.","Dusting off the high score table.","Reticulating splines.","Polishing pixels.","Untangling cables.","Asking the cat to please move off the keyboard.","Negotiating with electrons.","Spinning up the fun-o-meter.","Convincing the loading bar to load faster.","Reminding the GPU it's loved.","Buffering... now with extra buffering.","The internet hamsters are stretching their legs.","Dispatching the loading goblins.","Baking fresh cookies.","Folding origami progress bars.","Asking the bytes to please hurry up.","Knitting a tiny sweater for the CPU.","Watering the server room plants.","Stretching the loading bar a little longer.","Playing rock paper scissors with the network.","Bribing the loading bar with snacks.","Sweet-talking the database.","Telling the modem some encouraging words.","The game is loading, but the fun has already started.","Don't blink. Or do — it's fine.","Welcome aboard. Snacks are at the back."];</script>
+<!-- /jqrg-tip-lines:inline -->
+<script src="/js/jqrg-loader.js?v=slope-20261101b"></script>
+
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#0b1020">
+    <title>Stickman Arena</title>
+    <link rel="stylesheet" href="css/style.css">
+
+<!-- JQRG_CLOUD_INJECT_BEGIN --><script src="/js/jqrg-cloud.js?v=75"></script><script src="/js/jqrg-auth-ui.js?v=80" defer></script><!-- JQRG_CLOUD_INJECT_END -->
+<script src="/js/gg-detect.js"></script>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        
+        <!-- UI Overlay -->
+        <div id="ui-layer">
+            <div id="main-menu">
+                <h1 class="game-title">STICKMAN<br><span>ARENA</span></h1>
+                <div class="menu-options">
+                    <button id="btn-solo" class="menu-btn">PLAY SOLO<small>Free-for-all · 4 fighters</small></button>
+                    <button id="btn-doubles" class="menu-btn">PLAY DOUBLES<small>Teams of two · 8 fighters</small></button>
+                    <button id="btn-party" class="menu-btn">CONTROLLER PARTY<small>Keyboard or controllers · up to 10</small></button>
+                    <button id="btn-howto" class="menu-btn menu-btn-alt">HOW TO PLAY<small>Rules, controls and tips</small></button>
+                </div>
+                <div class="settings">
+                    <label>MATCH SKILL
+                        <select id="bot-difficulty">
+                            <option value="easy" selected>BEGINNING</option>
+                            <option value="medium">INTERMEDIATE</option>
+                            <option value="hard">ADVANCED</option>
+                            <option value="nightmare">PROFESSIONAL</option>
+                            <option value="hack">HACK</option>
+                        </select>
+                    </label>
+                </div>
+                <div class="credits">Tap anywhere to enable audio</div>
+            </div>
+
+            <div id="hud" style="display: none;">
+                <div id="player-stats"></div>
+                <div id="level-info" style="display: none;">Level: <span id="level-display">1</span></div>
+                <div id="message-area"></div>
+                <button id="btn-pause-mobile" style="display: none;">||</button>
+            </div>
+
+            <div id="pause-menu" style="display: none;">
+                <h1 class="game-title">PAUSED</h1>
+                <div class="menu-options">
+                    <button id="btn-resume" class="menu-btn">CONTINUE</button>
+                    <button id="btn-quit" class="menu-btn">LEAVE</button>
+                </div>
+            </div>
+
+            <!-- How to play -->
+            <div id="howto" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="howto-title">
+                <div class="howto-card">
+                    <div class="howto-head">
+                        <h2 id="howto-title">HOW TO PLAY</h2>
+                        <button id="howto-close" class="howto-x" aria-label="Close">&times;</button>
+                    </div>
+                    <div class="howto-body" id="howto-body"></div>
+                    <button id="howto-done" class="menu-btn howto-done">GOT IT</button>
+                </div>
+            </div>
+
+            <!-- Shown on phones held upright while playing -->
+            <div id="rotate-hint" style="display: none;"><div class="rotate-card"><div class="rotate-icon">&#x21BB;</div><b>Turn your phone sideways</b><span>The arena is wide. Tap to play anyway.</span></div></div>
+
+            <!-- Touch buttons for the party lobby (no keyboard to join, add or leave with) -->
+            <div id="lobby-touch" style="display: none;">
+                <button id="lt-join" class="lt-btn">JOIN</button>
+                <button id="lt-bot" class="lt-btn">+ FIGHTER</button>
+                <button id="lt-start" class="lt-btn lt-go">START</button>
+                <button id="lt-leave" class="lt-btn">LEAVE</button>
+            </div>
+
+            <!-- Mobile Controls -->
+            <div id="mobile-controls" style="display: none;">
+                <div id="touch-zone"></div>
+                <div id="joystick-left" class="joystick-area">
+                    <div class="joystick-knob"></div>
+                </div>
+                <div id="joystick-right" class="joystick-area">
+                    <div class="joystick-knob"></div>
+                </div>
+                <div id="mobile-buttons">
+                    <button id="btn-shield" class="action-btn">Shield</button>
+                    <button id="btn-attack" class="action-btn">Attack</button>
+                    <button id="btn-jump" class="action-btn">Jump</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/utils.js?v=63855544d60c"></script>
+    <script src="js/graphics.js?v=5eba776dd627"></script>
+    <script src="js/audio.js?v=008168f56405"></script>
+    <script src="js/input.js?v=01a45fd5505a"></script>
+    <script src="js/fx.js?v=4266b34224b2"></script>
+    <script src="js/backdrop.js?v=aba56d2a84a5"></script>
+    <script src="js/backdrop-scenery.js?v=f96faecfd3ad"></script>
+    <script src="js/backdrop-variants.js?v=842cb85f3751"></script>
+    <script src="js/backdrop-layers.js?v=6c940ccb04a6"></script>
+    <script src="js/backdrop-themes.js?v=48b52eb5694b"></script>
+    <script src="js/weapon-defs.js?v=93e9a4b02f5c"></script>
+    <script src="js/weapon-defs-2.js?v=17de39fc6647"></script>
+    <script src="js/weapon-art.js?v=69c8e1615abc"></script>
+    <script src="js/projectile.js?v=44c7f075f482"></script>
+    <script src="js/weapon.js?v=23fd9a23d6c4"></script>
+    <script src="js/weapon-kit.js?v=38f22f33311d"></script>
+    <script src="js/weapon-themes.js?v=1276feb56a71"></script>
+    <script src="js/ragdoll.js?v=9042d76a85fc"></script>
+    <script src="js/player.js?v=681d293ebbf1"></script>
+    <script src="js/player-anim.js?v=dda65491d3c9"></script>
+    <script src="js/player-draw.js?v=d92efc69eae7"></script>
+    <script src="js/bot-sim.js?v=3b732dc20b53"></script>
+    <script src="js/bot-nav.js?v=64eb6af59b51"></script>
+    <script src="js/bot-mind.js?v=4d75a756ac85"></script>
+    <script src="js/bot-reads.js?v=a1298afcb3e9"></script>
+    <script src="js/bot-strategy.js?v=cee3a1904b7c"></script>
+    <script src="js/bot-tactics.js?v=24857717bce1"></script>
+    <script src="js/bot-plans.js?v=ecd72091c46b"></script>
+    <script src="js/bot-motor.js?v=9df14529966e"></script>
+    <script src="js/bot.js?v=5f755ad2c740"></script>
+    <script src="js/level.js?v=7183fa2c93aa"></script>
+    <script src="js/level-layouts.js?v=e40942b76ad7"></script>
+    <script src="js/level-layouts-2.js?v=53603ec95563"></script>
+    <script src="js/level-reach.js?v=dfc53d630a3b"></script>
+    <script src="js/game.js?v=f2f1ae3a3003"></script>
+    <script src="js/game-combat.js?v=9937260f9309"></script>
+    <script src="js/death-fx.js?v=06e2dfa40ea1"></script>
+    <script src="js/game-status.js?v=55b070aa5164"></script>
+    <script src="js/level-materials.js?v=72dc278f0dc6"></script>
+    <script src="js/death-anim.js?v=a7a6d1c01c43"></script>
+    <script src="js/death-anim-2.js?v=0a795f9f5c93"></script>
+    <script src="js/void.js?v=337d23f44564"></script>
+    <script src="js/fighter-anim.js?v=7847b0e40268"></script>
+    <script src="js/fighter-art.js?v=2d62614fa5c9"></script>
+    <script src="js/angel-blast.js?v=c1938316500a"></script>
+    <script src="js/game-render.js?v=5cfeb1cd52bf"></script>
+    <script src="js/postfx.js?v=574a91d136ef"></script>
+    <script src="js/ui-anim.js?v=a9b505506937"></script>
+    <script src="js/howto-visual.js?v=ac399f341227"></script>
+    <script src="js/mobile-ui.js?v=725aede89b0f"></script>
+<script>
+// Cover mode: two PROFESSIONAL bots fight, no menus, no health bars.
+// Space pauses the frame (for screenshots); Space again resumes.
+window.addEventListener('load', () => setTimeout(() => {
+    const g = window.game;
+    if (!g) return;
+    ['main-menu', 'hud', 'pause-menu', 'mobile-controls', 'btn-pause-mobile'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.style.display = 'none';
+    });
+    document.querySelectorAll('.credits').forEach(el => el.style.display = 'none');
+    // Health bars off: the overhead bar is the only per-fighter HUD drawn in the world
+    Player.prototype.drawOverhead = function () {};
+    AudioSys.muteSfx = true;
+    g.demo = true;
+    g.state = 'MENU';
+    g.countdownEnd = 0;
+    const red = new Bot(0, 100, 100, 'nightmare', 0), blue = new Bot(1, 300, 100, 'nightmare', 1);
+    red.color = red.originalColor = '#e53935';    // one red
+    blue.color = blue.originalColor = '#1e88e5';  // one blue
+    g.players = [red, blue];
+    g.kingId = null;
+    g.levelNum = 1 + Math.floor(Math.random() * 4);
+    g.startLevel();
+    // Pause: the world stops advancing while the last frame stays on screen
+    let paused = false;
+    const tick = g.tick.bind(g);
+    g.tick = (n) => { if (paused) { g.lastTick = performance.now(); return; } tick(n); };
+    window.addEventListener('keydown', (e) => {
+        if (e.code !== 'Space') return;
+        e.preventDefault();
+        if (!e.repeat) paused = !paused;
+    });
+}, 60));
+</script>
+</body>
+</html>
