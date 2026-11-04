@@ -8,6 +8,9 @@ class Player {
         this.originalColor = color || Utils.randomColor();
         this.color = this.originalColor;
         this.inputType = inputType; // 'keyboard_wasd', 'bot', etc.
+        this.team = id;              // free-for-all by default; teammates share a number
+        this.teamColor = null;       // team mode: scarf, name tag and ground ring colour
+        this.label = null;           // name shown over the head ('P1', 'BOT 2', ...)
         
         this.velocity = { x: 0, y: 0 };
         this.speed = 5;
@@ -35,21 +38,58 @@ class Player {
         this.isLaying = false;
         this.kills = 0;
         this.onCloud = false;
+
+        // Visual state. Everything here is advanced by animate(dt) in
+        // player-anim.js, so slow motion and hit-stop slow it all down.
+        this.prevX = x;       // position before the last update, for smooth rendering
+        this.prevY = y;
+        this.squash = 0;      // 0..1 landing/trampoline squash
+        this.runPhase = 0;    // gait cycle
+        this.breath = 0;      // idle breathing
+        this.lean = 0;        // torso lean
+        this.clock = Math.random() * 1000;
+        this.attackAnim = 99; // frames since the last swing/shot started
+        this.attackDur = 20;
+        this.hitFlash = 0;    // white flash when damaged
+        this.flinch = 0;      // ragdoll blend weight after a hit
+        this.flinchNew = false;
+        this.proneW = 0;      // 0 standing .. 1 lying prone
+        this.pose = null;
+        this.joints = null;   // world-space skeleton from the last frame
+        this.trail = [];
+        this.landFx = 0;      // impact speed of the last hard landing, consumed by Game
     }
 
     update(game) {
         if (this.isDead) return;
+        this.prevX = this.x;
+        this.prevY = this.y;
+        this.prevH = this.height;
+        this.trail.unshift(this.x, this.y);
+        if (this.trail.length > 12) this.trail.length = 12;
 
-        this.handleInput(game.inputManager);
+        if (this.shieldCd > 0) this.shieldCd--;
+        const input = this.readInput(game);
+        let inp = input;
+        const st = this.status;
+        if (st && st.trap > 0) {
+            // Caught in a net: no walking, jumping or crouching, but you can still hit and block.
+            // Wriggling (trying to move or jump) frees you faster.
+            if (input.x || input.jump || input.y) st.trap = Math.max(0, st.trap - 1.2);
+            inp = Object.assign({}, input, { x: 0, y: 0, jump: false });
+            this.velocity.x *= 0.6;
+        }
+        this.applyInput(st && st.stun > 0 ? Player.STUNNED : inp);   // stunned: no control
         this.applyPhysics(game.level);
-        this.checkWeaponPickup(game.weapons);
+        this.checkWeaponPickup(game.weapons, game.players);
         
         if (this.grounded) {
             this.jumpCount = 0;
         }
+        if (this.launched && (this.velocity.y >= 0 || this.grounded)) this.launched = false;   // the launch is over once we start falling
 
         if (this.attackCooldown > 0) this.attackCooldown--;
-        
+
         // Weapon update
         if (this.weapon) {
             // Calculate hand position relative to player center
@@ -75,6 +115,7 @@ class Player {
             if (this.weapon.durability <= 0 && this.weapon.type !== 'bird_crystal') {
                 this.weapon.active = false; // Mark as inactive to remove from game
                 this.weapon = null;
+                if (this.onCloud) { this.onCloud = false; this.velocity.y = Math.min(this.velocity.y, 0); }   // staff spent: the cloud fades
             }
         }
         
@@ -86,7 +127,8 @@ class Player {
         // Bird Touch Kill Logic
         if (this.isBird) {
              game.players.forEach(p => {
-                 if (p !== this && !p.isDead && Utils.rectIntersect(this, p)) {
+                 if (p !== this && !p.isDead && p.team !== this.team && Utils.rectIntersect(this, p)) {
+                     p.lastHitType = 'bird_crystal'; p.lastHitAt = game.frameCount;
                      p.takeDamage(1, this); // Continuous damage instead of oneshot
                      if (game.frameCount % 10 === 0) { // Effect every few frames
                         game.createExplosion(p.x, p.y, 'red');
@@ -97,17 +139,23 @@ class Player {
         }
         
         // Bounds check
-        if (this.y > game.canvas.height + 100) {
+        const surface = game.level.voidSurface;   // lava / chocolate / icy water kill on touch (void.js)
+        if (this.y > game.level.height + 100 || (surface !== undefined && this.y + this.height > surface)) {
             this.takeDamage(1000);
         }
     }
 
-    handleInput(inputManager) {
-        if (this.isBot) return; // Bots handle their own input
+    // Humans read the shared InputManager. Bot overrides this with its brain's
+    // virtual controller, so both go through the exact same applyInput rules.
+    readInput(game) {
+        if (game.state === 'PAUSED') return Player.IDLE;   // menu open: you stand there while the match goes on
+        return game.inputManager.getPlayerInput(this.id, this.inputType);
+    }
 
-        const input = inputManager.getPlayerInput(this.id, this.inputType);
+    applyInput(input) {
         
         if (this.isBird || this.onCloud) {
+            if (this.isLaying) { this.y -= 30; this.height = 60; this.isLaying = false; }   // fliers never lie down
             // Bird/Angel/Cloud Flight Physics
             const flySpeed = this.speed * 1.5;
             if (input.x !== 0) this.velocity.x += input.x * 0.5;
@@ -123,7 +171,8 @@ class Player {
             }
 
             if (input.x !== 0) this.facing = input.x > 0 ? 1 : -1;
-            
+            this.shieldActive = !!this.autoShield;   // only the angel's automatic shield while flying
+
             // Attack
             if (input.attack && this.attackCooldown <= 0) {
                 this.attack();
@@ -147,15 +196,18 @@ class Player {
             }
         }
 
-        // Movement
+        // Movement: ease toward target speed so starts/stops feel weighted
         if (!this.isLaying && input.x !== 0) {
-            this.velocity.x = input.x * this.speed;
+            const target = input.x * this.speed * (this.speedMul || 1);   // slowed / frozen fighters crawl
+            const control = this.grounded ? 0.35 : 0.18; // Snappy on ground, looser in air
+            this.velocity.x += (target - this.velocity.x) * control;
             // Only change facing if not aiming
             if (Math.abs(input.aimX) < 0.1) {
                 this.facing = input.x > 0 ? 1 : -1;
             }
         } else if (!this.isLaying) {
-            this.velocity.x *= 0.8; // Friction
+            // Quick ground stop, keep most momentum mid-air
+            this.velocity.x *= this.grounded ? 0.8 : 0.98;
         }
 
         // Aiming (Controller/Touch Right Stick)
@@ -180,6 +232,9 @@ class Player {
             }
         } else {
             this.jumpPressed = false;
+            // Releasing jump early cuts the ascent for a controllable hop, but never a
+            // bounce: a bouncer launches you at full height whether or not you hold jump
+            if (!this.wings && !this.launched && this.velocity.y < -4) this.velocity.y *= 0.6;
         }
 
         // Attack
@@ -187,11 +242,29 @@ class Player {
             this.attack();
         }
 
-        // Shield
-        if (input.shield && !this.shieldActive) {
-            AudioSys.playShield();
+        // Shield: up to 1 second per raise, then 2 seconds to recharge, and a
+        // fresh press is needed to raise it again (holding the button doesn't)
+        if (this.autoShield) {
+            // Angel-wide automatic shield: held for as long as the angel lives
+            this.shieldActive = true;
+            this.shieldTime = 0;
+            this.shieldLatch = false;
+        } else if (this.shieldActive) {
+            this.shieldTime = (this.shieldTime || 0) + 1;
+            if (!input.shield || this.shieldTime >= Player.SHIELD_MAX) {
+                this.shieldActive = false;
+                this.shieldTime = 0;
+                this.shieldCd = Player.SHIELD_CD;
+                this.shieldLatch = !!input.shield;
+            }
+        } else if (input.shield) {
+            if (!this.shieldLatch && !(this.shieldCd > 0)) {
+                this.shieldActive = true;
+                this.shieldTime = 0;
+                if (!this.isGhost) AudioSys.playShield();
+            } else this.shieldLatch = true;
         }
-        this.shieldActive = input.shield;
+        if (!input.shield) this.shieldLatch = false;
     }
 
     applyPhysics(level) {
@@ -207,6 +280,17 @@ class Player {
             return;
         }
 
+        // Riding a mover: it already moved this frame, so keep our feet on it
+        const ride = this.grounded ? this.ridePlat : null;
+        this.ridePlat = null;
+        if (ride && ride.motion && ride.active && this.x + this.width > ride.x && this.x < ride.x + ride.width) {
+            this.y = ride.y - this.height;
+        }
+
+        // Where we were before moving: mover collisions are resolved by which
+        // side of the platform we came from (see resolveMover)
+        this._ox = this.x; this._oy = this.y; this._og = this.grounded;
+
         this.velocity.y += this.gravity;
         this.grounded = false; // Reset grounded state
         
@@ -218,50 +302,130 @@ class Player {
     }
 
     checkCollisions(level, axis) {
-        // Simple AABB against level platforms
+        // Falling: of every surface our feet passed this frame, land on the
+        // highest (the one we'd have hit first), so a fast fall onto a bouncer
+        // sitting on the floor bounces instead of sinking into it
+        if (axis === 'y' && this.velocity.y > 0) {
+            const feet0 = this._oy + this.height;
+            let first = null;
+            for (const platform of level.platforms) {
+                if (!platform.active || platform.motion || !Utils.rectIntersect(this, platform)) continue;
+                if (platform.y >= feet0 - 1 && (!first || platform.y < first.y)) first = platform;
+            }
+            if (first) this.landOn(first);
+        }
         for (const platform of level.platforms) {
             if (!platform.active) continue; // Ignore broken platforms
-            
-            if (Utils.rectIntersect(this, platform)) {
-                if (axis === 'x') {
-                    if (this.velocity.x > 0) this.x = platform.x - this.width;
-                    else if (this.velocity.x < 0) this.x = platform.x + platform.width;
-                    this.velocity.x = 0;
-                } else {
-                    if (this.velocity.y > 0) {
-                        this.y = platform.y - this.height;
-                        
-                        if (platform.type === 'trampoline') {
-                            // Bounce!
-                            this.velocity.y = -20; // High jump
-                            this.grounded = false;
-                            AudioSys.playJump(); // Or a specific bounce sound
-                        } else {
-                            this.grounded = true;
-                            this.velocity.y = 0;
-                        }
-                        
-                        // Move with platform
-                        if (platform.type === 'moving') {
-                            this.x += platform.vx;
-                        }
-                    } else if (this.velocity.y < 0) {
-                        this.y = platform.y + platform.height;
-                        this.velocity.y = 0;
-                    }
+            if (!Utils.rectIntersect(this, platform)) continue;
+            if (platform.motion) { this.resolveMover(platform, axis); continue; }
+            if (axis === 'x') {
+                // Already inside it before we moved (never push through to the far side)
+                if (this._ox < platform.x + platform.width && this._ox + this.width > platform.x &&
+                    this._oy < platform.y + platform.height && this._oy + this.height > platform.y) {
+                    if (this.y + this.height - platform.y <= 24) { this.y = platform.y - this.height; this.velocity.y = Math.min(0, this.velocity.y); }
+                    continue;
                 }
+                if (this.velocity.x > 0) this.x = platform.x - this.width;
+                else if (this.velocity.x < 0) this.x = platform.x + platform.width;
+                this.velocity.x = 0;
+            } else if (this._oy + this.height <= platform.y + 1) {
+                if (this.velocity.y > 0) this.landOn(platform);       // came down onto it
+            } else if (this._oy >= platform.y + platform.height - 1) {
+                this.y = platform.y + platform.height;                 // came up into it: bonk
+                if (this.velocity.y < 0) this.velocity.y = 0;
+            } else if (!(this._ox < platform.x + platform.width && this._ox + this.width > platform.x)) {
+                // Carried into it from the side (riding a mover under a ledge): it's a wall
+                this.x = this._ox + this.width / 2 <= platform.x + platform.width / 2 ? platform.x - this.width : platform.x + platform.width;
+                this.velocity.x = 0;
             }
         }
     }
 
-    checkWeaponPickup(weapons) {
-        if (this.weapon) return; // Already has weapon
+    // Feet on top of a platform: bounce off a bouncer, otherwise stand (and ride it)
+    landOn(platform) {
+        this.y = platform.y - this.height;
+        if (platform.type === 'trampoline') {
+            // Bounce!
+            this.velocity.y = -(platform.power || 15); // Bounce (15 is about 225px high)
+            this.grounded = false;
+            this.jumpCount = 0;   // a bounce gives your jumps back
+            this.launched = true; // and the launch can't be cut short by releasing jump
+            platform.shake = 1; // Mat squashes visually
+            this.squash = 0.6;
+            if (!this.isGhost) AudioSys.playJump(); // Bot simulations stay silent
+        } else {
+            // Landing impact: squash harder the faster we fell
+            if (this.velocity.y > 6) {
+                this.squash = Math.min(1, this.velocity.y / 14);
+                this.landFx = this.velocity.y; // Game spawns landing dust
+            }
+            this.grounded = true;
+            this.velocity.y = 0;
+            this.ridePlat = platform;
+        }
+        if (platform.motion) this.x += platform.vx;   // carried along
+    }
+
+    // Moving platforms: you land on them and ride (a lift rising under your feet
+    // carries you up), and you can't jump up through them: your head hits the
+    // underside like any other platform. They never shove you sideways, and one
+    // sliding down onto someone standing under it just passes through. One
+    // sweeping in at foot height scoops you up onto it. Their sides are walls: you can't walk
+    // into one, and one sliding into you pushes you along.
+    resolveMover(p, axis) {
+        const py0 = p.y - (p.vy || 0);
+        const feet0 = this._oy + this.height;
+        if (feet0 <= Math.max(py0, p.y) + 1) {   // we were on or above its top
+            if (axis === 'y') this.landOn(p);
+            return;
+        }
+        if (axis === 'y' && this.velocity.y < 0 && this._oy >= py0 + p.height - 1) {
+            this.y = p.y + p.height;              // we were below it and went up into it: bonk
+            this.velocity.y = 0;
+            return;
+        }
+        if (axis === 'x' && p.type !== 'trampoline' && this.y + this.height - p.y <= 14 && this.velocity.y >= 0) {
+            this.y = p.y - this.height;   // caught our feet: step up and ride
+            this.velocity.y = 0;
+            this.grounded = true;
+            this.ridePlat = p;
+            return;
+        }
+        // A side wall: if we were beside it (not over or under it) before this step, we can't enter it
+        // from the side, and one sliding into us pushes us along instead of passing through.
+        if (axis === 'x') {
+            const px0 = p.x - (p.vx || 0);
+            const besideBefore = !(this._ox < px0 + p.width && this._ox + this.width > px0);
+            const levelBefore = this._oy < py0 + p.height && feet0 > py0;
+            if (besideBefore && levelBefore) {
+                this.x = this._ox + this.width / 2 <= px0 + p.width / 2 ? p.x - this.width : p.x + p.width;
+                if ((this.x < p.x) === (this.velocity.x > 0) || this.velocity.x === 0) this.velocity.x = 0;
+            }
+        }
+    }
+
+    // Walk over a weapon to pick it up. Already holding one? Crouch on the new
+    // one to swap: yours drops at your feet (stand up before swapping again).
+    // The Angel Crystal and a flying Nimbus Staff are never swapped away.
+    checkWeaponPickup(weapons, players) {
+        if (!this.isLaying) this.swapLatch = false;
+        if (this.weapon && (!this.isLaying || this.swapLatch || this.isBird || this.onCloud)) return;
 
         for (let i = 0; i < weapons.length; i++) {
             const w = weapons[i];
-            if (w.active && !w.owner && Utils.rectIntersect(this, w)) {
+            if (w.active && !w.owner && !(w.lock > 0) && Utils.rectIntersect(this, w.box())) {
+                if (players && this.outbid(w, players)) continue;
+                if (this.weapon) {
+                    if (w.type === this.weapon.type) continue;
+                    this.dropWeapon();
+                    this.swapLatch = true;
+                }
                 this.weapon = w;
                 w.owner = this;
+                // Flight gear (crystal, staff) takes off standing: never fly lying down
+                if ((w.type === 'bird_crystal' || w.type === 'magic_stick') && this.isLaying) {
+                    this.y -= 30; this.height = 60; this.isLaying = false; this.proneW = 0;
+                }
                 if (w.type === 'bird_crystal') {
                     this.wings = true;
                     this.isBird = true;
@@ -278,8 +442,39 @@ class Player {
         }
     }
 
+    // Two fighters touching the same weapon on the same frame: whoever comes first in the player list must
+    // not win by default. A person beats a bot; otherwise the one nearer the weapon takes it.
+    outbid(w, players) {
+        const box = w.box(), wx = box.x + box.width / 2;
+        for (const o of players) {
+            if (o === this || o.isDead || o.isGhost) continue;
+            if (o.weapon && !(o.isLaying && !o.swapLatch)) continue;     // already armed and not swapping
+            if (o.weapon && o.weapon.type === w.type) continue;
+            if (!Utils.rectIntersect(o, box)) continue;
+            if (!this.isBot !== !o.isBot) { if (!o.isBot) return true; continue; }
+            const dOther = Math.abs(o.x + o.width / 2 - wx), dMe = Math.abs(this.x + this.width / 2 - wx);
+            if (dOther < dMe) return true;
+        }
+        return false;
+    }
+
+    // Let go of the held weapon at our feet (swapping for another)
+    dropWeapon() {
+        const w = this.weapon;
+        if (!w) return;
+        w.owner = null;
+        w.active = true;
+        w.x = this.x + this.width / 2 - w.width / 2;
+        w.y = w.prevY = this.y + this.height - w.height;
+        w.landed = false;
+        this.weapon = null;
+    }
+
     attack() {
-        this.attackCooldown = 20;
+        const def = this.isBird ? null : WeaponDefs.of(this);
+        this.attackCooldown = def ? def.cooldown : 20;
+        this.attackAnim = 0;
+        this.attackDur = Math.max(10, this.attackCooldown);
         if (this.isBird) {
             this.wantsToExplode = true;
             return;
@@ -299,10 +494,13 @@ class Player {
     takeDamage(amount, attacker) {
         if (this.shieldActive) amount *= 0.1; // Shield reduces damage
         if (this.isBird) amount *= 0.2; // Bird takes significantly less damage (Boss Mode)
+        if (attacker && attacker !== this && !this.isGhost) { this.lastAttacker = attacker; this.lastAttackerAt = performance.now(); }
+        const wasDead = this.isDead;
         this.health -= amount;
         if (this.health <= 0 && !this.isDead) {
             this.health = 0;
             this.isDead = true;
+            this.shieldActive = false;   // a held shield must not outlive the fighter
             if (attacker && attacker !== this) {
                 attacker.kills++;
             }
@@ -317,219 +515,11 @@ class Player {
                 this.onCloud = false;
             }
         }
-    }
-
-    draw(ctx, kingId) {
-        if (this.isDead) return;
-        if (isNaN(this.x) || isNaN(this.y)) {
-            // Attempt to reset position if invalid
-            this.x = 100;
-            this.y = 100;
-            this.velocity = {x:0, y:0};
-        }
-
-        ctx.save();
-        // Deeper visual offset when laying
-        const yOffset = this.isLaying ? 10 : 0;
-        ctx.translate(this.x + this.width/2, this.y + this.height/2 + yOffset);
-        
-        // Rotate if laying down
-        if (this.isLaying) {
-            ctx.rotate(Math.PI / 2 * this.facing); // Rotate 90 degrees
-            // Adjust position slightly to look grounded
-            ctx.translate(0, -15); 
-        }
-        
-        ctx.scale(this.facing * this.scale, this.scale); // Flip if facing left
-        
-        // Angel/Bird Glow
-        if (this.isBird) {
-            ctx.shadowBlur = 20;
-            ctx.shadowColor = '#FFFFFF'; // White Glow
-            this.color = '#FFFFFF'; // Force White
-        }
-
-        // Draw Stickman Model
-        ctx.strokeStyle = this.color;
-        ctx.lineWidth = 4; // Slightly thinner
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-
-        // Animation state
-        const isMoving = Math.abs(this.velocity.x) > 0.5;
-        const isJumping = !this.grounded;
-        const runTime = Date.now() / 150;
-
-        // Body parts positions
-        const headY = -25;
-        const bodyTopY = -10;
-        const bodyBottomY = 15;
-
-        // Head
-        ctx.beginPath();
-        ctx.arc(0, headY, 12, 0, Math.PI * 2);
-        ctx.fillStyle = '#FFF'; // Face color
-        ctx.fill();
-        ctx.stroke();
-
-        // Eyes (Angry/Normal)
-        ctx.fillStyle = '#000';
-        ctx.beginPath();
-        if (this.wantsToAttack || this.attackCooldown > 0) {
-            // Angry eyes
-            ctx.moveTo(2, headY - 3);
-            ctx.lineTo(8, headY);
-        } else {
-            // Normal eyes
-            ctx.arc(5, headY - 2, 1.5, 0, Math.PI * 2);
-        }
-        ctx.fill();
-        ctx.stroke();
-
-        // Body
-        ctx.beginPath();
-        ctx.moveTo(0, bodyTopY);
-        ctx.lineTo(0, bodyBottomY);
-        ctx.stroke();
-
-        // Helper for limbs (2 parts)
-        const drawLimb = (startX, startY, angle1, len1, angle2, len2) => {
-            const elbowX = startX + Math.sin(angle1) * len1;
-            const elbowY = startY + Math.cos(angle1) * len1;
-            const endX = elbowX + Math.sin(angle1 + angle2) * len2;
-            const endY = elbowY + Math.cos(angle1 + angle2) * len2;
-            
-            ctx.beginPath();
-            ctx.moveTo(startX, startY);
-            ctx.lineTo(elbowX, elbowY);
-            ctx.lineTo(endX, endY);
-            ctx.stroke();
-        };
-
-        // Arms
-        if (this.weapon) {
-            // Holding weapon
-            drawLimb(0, bodyTopY + 5, 1.5, 15, -0.5, 15); // Front
-            drawLimb(0, bodyTopY + 5, -0.5, 15, 0, 15); // Back
-        } else if (this.attackCooldown > 0) {
-             // Punch animation
-             drawLimb(0, bodyTopY + 5, 1.5, 15, 0, 15); // Punch straight
-             drawLimb(0, bodyTopY + 5, -0.5, 15, -1, 15); // Other arm back
-        } else if (isJumping) {
-             // Jump/Fall
-             drawLimb(0, bodyTopY + 5, 2.5, 15, -0.5, 15);
-             drawLimb(0, bodyTopY + 5, -2.5, 15, 0.5, 15);
-        } else if (isMoving) {
-            // Running
-            const swing = Math.sin(runTime);
-            drawLimb(0, bodyTopY + 5, swing, 15, 0.5, 15);
-            drawLimb(0, bodyTopY + 5, -swing, 15, 0.5, 15);
-        } else {
-            // Idle
-            drawLimb(0, bodyTopY + 5, 0.2, 15, 0.2, 15);
-            drawLimb(0, bodyTopY + 5, -0.2, 15, -0.2, 15);
-        }
-
-        // Legs
-        if (isJumping) {
-            // Jump pose
-            drawLimb(0, bodyBottomY, 0.5, 18, 1, 18);
-            drawLimb(0, bodyBottomY, -0.5, 18, 1, 18);
-        } else if (isMoving) {
-            // Run Cycle
-            const stride = Math.sin(runTime);
-            drawLimb(0, bodyBottomY, stride, 18, Math.abs(stride)*0.5, 18);
-            drawLimb(0, bodyBottomY, -stride, 18, Math.abs(stride)*0.5, 18);
-        } else {
-            // Stand
-            drawLimb(0, bodyBottomY, 0.1, 18, 0, 18);
-            drawLimb(0, bodyBottomY, -0.1, 18, 0, 18);
-        }
-
-        // Wings
-        if (this.wings || this.isBird) {
-            ctx.strokeStyle = this.isBird ? '#FFFFFF' : '#00FFFF';
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.moveTo(-5, -15);
-            ctx.quadraticCurveTo(-40, -40, -15, -5);
-            ctx.moveTo(5, -15);
-            ctx.quadraticCurveTo(40, -40, 15, -5);
-            ctx.stroke();
-            
-            if (this.isBird) {
-                ctx.strokeStyle = '#FFFF00';
-                ctx.beginPath();
-                ctx.ellipse(0, -45, 15, 5, 0, 0, Math.PI * 2);
-                ctx.stroke();
-            }
-        }
-
-        // Cloud
-        if (this.onCloud) {
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-            ctx.beginPath();
-            // Draw a fluffy cloud at the feet (Lowered to y+35)
-            const cloudY = 35;
-            ctx.arc(0, cloudY, 15, 0, Math.PI * 2);
-            ctx.arc(-15, cloudY + 5, 12, 0, Math.PI * 2);
-            ctx.arc(15, cloudY + 5, 12, 0, Math.PI * 2);
-            ctx.arc(-8, cloudY + 10, 10, 0, Math.PI * 2);
-            ctx.arc(8, cloudY + 10, 10, 0, Math.PI * 2);
-            ctx.fill();
-        }
-        
-        // Shield
-        if (this.shieldActive) {
-            ctx.strokeStyle = '#0000FF';
-            ctx.lineWidth = 3;
-            ctx.fillStyle = 'rgba(0, 0, 255, 0.2)';
-            ctx.beginPath();
-            ctx.arc(0, 0, 50, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
-        }
-
-        // Health Bar
-        const barWidth = this.isBird ? 60 : 50; // Larger bar for Boss
-        ctx.fillStyle = 'red';
-        ctx.fillRect(-barWidth/2, -70, barWidth, 6);
-        ctx.fillStyle = '#0F0';
-        ctx.fillRect(-barWidth/2, -70, barWidth * (this.health / this.maxHealth), 6);
-        
-        // Player Indicator
-        if (!this.isBot) {
-            ctx.fillStyle = this.color;
-            ctx.font = 'bold 12px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText(`P${this.id + 1}`, 0, -80);
-        }
-
-        ctx.restore();
-
-        // Draw Weapon
-        if (this.weapon) {
-            this.weapon.draw(ctx);
-        }
-        
-        // Draw Crown if King (Global coordinates)
-        if (kingId === this.id) {
-             ctx.save();
-             ctx.translate(this.x + this.width/2, this.y);
-             ctx.fillStyle = 'gold';
-             ctx.beginPath();
-             ctx.moveTo(-15, -10);
-             ctx.lineTo(-15, -25);
-             ctx.lineTo(-5, -15);
-             ctx.lineTo(0, -25);
-             ctx.lineTo(5, -15);
-             ctx.lineTo(15, -25);
-             ctx.lineTo(15, -10);
-             ctx.fill();
-             ctx.strokeStyle = 'orange';
-             ctx.lineWidth = 2;
-             ctx.stroke();
-             ctx.restore();
-        }
+        if (Player.onDamage && !this.isGhost) Player.onDamage(this, amount, attacker, this.shieldActive, !wasDead && this.isDead);
     }
 }
+
+Player.STUNNED = Object.freeze({ x: 0, y: 0, aimX: 0, aimY: 0, jump: false, attack: false, shield: false });
+Player.SHIELD_MAX = 60;    // frames a shield can stay up
+Player.SHIELD_CD = 120;    // frames to recharge after it drops
+Player.IDLE = Object.freeze({ x: 0, y: 0, aimX: 0, aimY: 0, jump: false, attack: false, shield: false, join: false });
