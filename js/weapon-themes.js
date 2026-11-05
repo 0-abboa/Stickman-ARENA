@@ -14,12 +14,13 @@
         lava:    { fire: 3, flame: 3, inferno: 3, meteor: 3, lava: 3, molotov: 3, flare: 3, phoenix: 3, sun: 2, tiger: 2, dynamite: 2, bomb: 1, grenade: 1, rocket: 1, mortar: 1, bazooka: 1, rpg: 1, obsidian: 3, blood: 1 },
         ocean:   { trident: 3, harpoon: 3, anchor: 3, water: 3, bubble: 3, net: 3, coral: 3, shell: 2, wave: 2, cutlass: 3, hook: 2, grapple: 2, musket: 2, blunderbuss: 2, pirate: 3, kraken: 3 },
         candy:   { candy: 3, cane: 3, lollipop: 3, sugar: 3, paint: 3, paintball: 3, bubble: 2, card: 2, trick: 2, squeaky: 3, mallet: 2, music: 2, bard: 2, lute: 2, boxing: 2, coin: 2, gold: 2, confetti: 0, star: 2 },
+        xmas:    { snow: 3, snowball: 3, ice: 2, frost: 2, icicle: 2, candy: 3, cane: 3, present: 3, gift: 3, bell: 3, star: 2, sleigh: 3, nutcracker: 3, cracker: 2, tinsel: 3, ornament: 3, holly: 3, mistletoe: 3, gingerbread: 3, cookie: 2, elf: 3, toy: 2, coal: 3, frostbrand: 2, music: 1 },
         haunted: { scythe: 3, reaper: 3, shadow: 3, bone: 3, skull: 2, soul: 3, ghost: 3, venom: 2, poison: 2, kris: 2, blood: 3, moon: 2, wraith: 3, bat: 2, crusher: 2, holy: 2, executioner: 2, chainsaw: 2, pumpkin: 3 }
     };
     // status effects and shot looks that belong to a theme
-    const THEME_STATUS = { ice: ['freeze', 'slow'], lava: ['burn'], haunted: ['drain', 'poison'], neon: ['chain', 'stun'], cloud: ['chain'], magic: ['drain'], ocean: ['slow'] };
+    const THEME_STATUS = { xmas: ['freeze', 'slow'], ice: ['freeze', 'slow'], lava: ['burn'], haunted: ['drain', 'poison'], neon: ['chain', 'stun'], cloud: ['chain'], magic: ['drain'], ocean: ['slow'] };
     const THEME_LOOK = {
-        ice: ['shard', 'snow'], lava: ['fire', 'flask', 'shell'], ocean: ['bubble', 'water', 'harpoon', 'net'], candy: ['paint', 'note', 'card', 'coin', 'spin'],
+        xmas: ['snow', 'shard', 'star', 'ring'], ice: ['shard', 'snow'], lava: ['fire', 'flask', 'shell'], ocean: ['bubble', 'water', 'harpoon', 'net'], candy: ['paint', 'note', 'card', 'coin', 'spin'],
         neon: ['beam', 'rail', 'glitch', 'zap', 'orb'], haunted: ['skull', 'void'], magic: ['void', 'star', 'clock', 'orb'], cloud: ['gust', 'ring', 'zap'], stone: ['rock'], dirt: ['thorn', 'arrow']
     };
     // whole words of the key and the display name ("Venom Kris" -> venom, kris), plurals folded

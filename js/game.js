@@ -304,6 +304,7 @@ class Game {
             p.paint = null; p.paintT = 0; p.scarf = null; p.lastAttacker = null; p.lastAttackerAt = 0;
             p.attackCooldown = 0; p.wantsToAttack = false; p.wantsToPunch = false; p.wantsToExplode = false;
             p.squash = 0; p.landFx = 0;
+            p.hidden = false; p.sink = 0; p.env = null; p.portalCd = 0; p.zipCd = 0; p.cannonCd = 0;
         });
 
         if (this.levelNum % 5 === 0) {

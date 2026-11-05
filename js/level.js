@@ -20,9 +20,9 @@ class Level {
         this.variantSeed = Math.random();   // which backdrop (of 3 per material) this round uses
         // Magic bird level every 5 levels
         this.isMagicLevel = (levelNum % 5 === 0);
-        const materials = Level.MATERIALS || ['dirt', 'stone', 'cloud', 'ice'];   // level-materials.js adds the newer themes
+        const materials = Level.available ? Level.available() : (Level.MATERIALS || ['dirt', 'stone', 'cloud', 'ice']);   // seasonal themes only in season (seasons.js)
         this.material = materials[Math.floor(Math.random() * materials.length)];
-        if (this.isMagicLevel) this.material = 'magic';
+        if (this.isMagicLevel && !Level.forcedTheme) this.material = 'magic';
 
         // Pick a layout (never the same one twice in a row)
         const list = LEVEL_LAYOUTS;

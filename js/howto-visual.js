@@ -382,7 +382,7 @@ const HowToVisual = (() => {
               : ['keys', 'Keyboard', 'Player 1 uses WASD, Q and E (Space also jumps). Player 2 in Doubles uses the arrows, / and . In Solo you can use either set. Crouch (S) on a weapon to swap. A controller works too.'],
         ['goal', 'How you win', 'Knock out your rivals. Solo: first to 10 knockouts wins the match. Doubles: your team of two against three other teams, first to 20 knockouts together.'],
         ['move', 'Run and jump', 'Run, jump, and jump again in mid-air for a flip and a double jump.'],
-        ['fight', 'Fight', 'Punch bare-handed. Weapons fall from the sky: walk over one to take it. They wear out, so use them while you have them.'],
+        ['fight', 'Fight', 'Punch bare-handed. Weapons fall from the sky: walk over one to take it. Every weapon has its own trick; walk up to one to read what it does. They wear out.'],
         ['shield', 'Shield', 'Blocks almost all damage, but lasts only about a second, then needs a moment to recharge. Time it.'],
         ['edge', 'Knockouts', 'Every fighter has 100 health. Hits also knock you back: off the edge or into a pit and you are out at once. Crouching cancels knockback.'],
         ['bounce', 'Bouncers and platforms', 'Springy mats launch you high. Some platforms move, and thin ice can shatter.'],
@@ -395,7 +395,7 @@ const HowToVisual = (() => {
     function extrasHTML() {
         return touchMode
             ? '<div><b>Controller Party</b><span>Tap JOIN to take a seat, + FIGHTER to fill another, START to begin (up to 10 fighters).</span></div><div><b>Match skill</b><span>Pick the difficulty on the main menu, from Beginning up to Hack.</span></div><div><b>Tips</b><span>Stay on solid ground when low on health. Block a big hit, then punish the swing. In Doubles, stay near your ally.</span></div>'
-            : '<div><b>Controller Party</b><span>Up to 10 fighters on one screen: press Enter (or A on a controller) to join, B to add another fighter, Enter to start.</span></div><div><b>Match skill</b><span>Pick the difficulty on the main menu, from Beginning up to Hack.</span></div><div><b>Tips</b><span>Stay on solid ground when low on health. Block a big hit, then punish the swing. In Doubles, stay near your ally.</span></div>';
+            : '<div><b>Controller Party</b><span>Up to 10 fighters on one screen: press Enter (or A on a controller) to join, B to add another fighter, Enter to start.</span></div><div><b>Match skill</b><span>Pick the difficulty on the main menu, from Beginning up to Hack.</span></div><div><b>Living arenas</b><span>Arenas fight back. Smoke, ash and a trembling ground mean lava is about to erupt; bubbles mean a water spout; dust and rattling mean a trap. Bridges sway, ledges crumble, and some things help: springs heal, fans and bubbles lift you.</span></div><div><b>Tips</b><span>Stay on solid ground when low on health. Block a big hit, then punish the swing. In Doubles, stay near your ally.</span></div>';
     }
 
     function show(i) {
