@@ -287,8 +287,10 @@ class InputManager {
     // direction (up, down, any way). Pushing the stick up on the ground is a jump, but that jump is
     // its own flag so flying never reads it as a jump. The touch flag tells the flight code to take
     // the stick alone: the jump and lie-down buttons do nothing while airborne.
-    touchInput(input) {
+    // A keyboard player keeps their keys unless a thumb is actually on the stick; the touch seat always uses it.
+    touchInput(input, touchSeat) {
         const L = this.touchState.leftStick;
+        if (!L.active && !touchSeat) return;
         input.x = L.x;
         input.touch = true;
         input.stick = { x: L.rawX || 0, y: L.rawY || 0 };
@@ -348,7 +350,7 @@ class InputManager {
             }
 
             // Touch
-            this.touchInput(input);
+            this.touchInput(input, false);
             if (this.touchState.buttons.crouch) input.y = 1;
             if (this.touchState.buttons.jump) input.jump = true;
             if (this.touchState.buttons.attack) input.attack = true;
@@ -395,7 +397,7 @@ class InputManager {
                 if (this.padDown(gpIndex, 6) || this.padDown(gpIndex, 4)) input.shield = true; 
             }
         } else if (inputType === 'touch') {
-            this.touchInput(input);
+            this.touchInput(input, true);
             input.y = this.touchState.buttons.crouch ? 1 : 0;
             
             input.aimX = this.touchState.rightStick.x;
