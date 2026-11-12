@@ -118,13 +118,14 @@ Object.assign(BotBrain.prototype, {
         const other = p.isDead ? null : this.fightOf(p);
         if (other && h < 0.3) {
             const oFrac = other.health / Math.max(1, other.maxHealth);
-            s += (hpFrac < 0.35 || oFrac < 0.35) ? -60 : 140;
+            if (this.difficulty === 'hack' && hpFrac > 0.2 && oFrac > 0.2 && me.health < me.maxHealth * 0.65) s += 230;
+            else s += (hpFrac < 0.35 || oFrac < 0.35) ? -60 : 140;
         }
         // Hurt ourselves: don't pick on armed fighters
         if (ctx.cautious) s += pw * 0.9 * (1 - h);
         // Teammates gang up; rivals spread out
         if (focus.has(p)) s -= 160;
-        s += (pressure.get(p) || 0) * 90;
+        s += (pressure.get(p) || 0) * (this.difficulty === 'hack' ? 145 : 90);
         if (!p.isBot && !(pressure.get(p))) s -= 120;                      // a player nobody is fighting draws someone over
         if (this.target && this.target.ref === p) s -= 70;                 // stick with a target
         if (!this.canReach(seen)) s += 700;
@@ -160,6 +161,9 @@ Object.assign(BotBrain.prototype, {
         if (this.frame < (this.lurkBan || 0)) return false;
         if (this.hostility(opp.ref, opp) >= 0.3 || this.hostility(other, this.perceive(other) || opp) >= 0.3) return false;
         const oFrac = other.health / Math.max(1, other.maxHealth), pFrac = opp.health / Math.max(1, opp.maxHealth);
+        // A low-health HACK bot lets two rivals finish their exchange instead
+        // of diving into the same brawl and losing the rest of its health.
+        if (this.difficulty === 'hack' && me.health < me.maxHealth * 0.65 && oFrac > 0.2 && pFrac > 0.2) return true;
         if (oFrac < 0.4 || pFrac < 0.4) return false;                      // time to finish the loser
         // Clearly better armed than both: no need to wait
         if (this.powerOf(this.selfView()) > Math.max(this.powerOf(opp), this.powerOf(other)) * 1.4) return false;

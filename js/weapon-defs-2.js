@@ -404,7 +404,7 @@
         venomstaff: def('Venom Staff', 'staff', s(28, 18, 'rare', 72, [8, 6], P({ type: 'blob', speed: 9, lift: -2, gravity: 0.14, damage: 4, knock: 2, size: 14, life: 70, blast: { radius: 70, damage: 4, knock: 2, status: { poison: 200 } }, look: { s: 'blob', c: '140,255,60', big: true } })),
             { k: 'staff', L: 30, B: 24, head: 'skull', c: ['#ccff90', '#33691e'], s: '#1b2a10', glow: '150,255,60' },
             ['melt', 'skullPuff']),
-        voidstaff: def('Void Staff', 'staff', s(46, 12, 'legendary', 86, [8, 6], P({ type: 'orb', speed: 6, damage: 0, knock: 0, size: 16, life: 90, solid: false, blast: { radius: 130, damage: 16, knock: 12, pull: true }, look: { s: 'void', c: '160,80,255' } })),
+        voidstaff: def('Void Staff', 'staff', s(46, 12, 'legendary', 86, [8, 6], P({ type: 'orb', speed: 6, damage: 0, knock: 0, size: 16, life: 90, solid: false, blast: { radius: 130, damage: 40, knock: 12, pull: true }, look: { s: 'void', c: '160,80,255' } })),
             { k: 'staff', L: 30, B: 24, head: 'void', c: ['#b388ff', '#1a0033'], s: '#212121', glow: '160,80,255' },
             ['implode', 'voidSparks']),
         earthstaff: def('Earth Staff', 'staff', s(34, 16, 'rare', 70, [8, 6], P({ type: 'rock', speed: 10, lift: -5, gravity: 0.3, damage: 16, knock: 10, size: 14, life: 90, look: { s: 'rock', c: '140,110,80' } })),

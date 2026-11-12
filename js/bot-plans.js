@@ -26,6 +26,15 @@
         const myDef = WeaponDefs.of(me), oppDef = WeaponDefs.of(opp);
         const myDps = myDef.kind === 'shot' ? this.shotDps(myDef) : this.meleeDps(me);
         const theirDps = oppDef.kind === 'shot' ? this.shotDps(oppDef) : this.meleeDps(opp);
+        if (this.difficulty === 'hack' && myHp < 0.58) {
+            const now = performance.now();
+            const nearbyEnemies = game.players.filter(p => p !== me && !p.isDead && p.team !== me.team &&
+                Math.hypot(BotSim.cx(p) - BotSim.cx(me), p.y - me.y) < 360).length;
+            const recentlyHit = me.lastAttacker && now - (me.lastAttackerAt || 0) < 1400;
+            if (nearbyEnemies >= 2 || (nearbyEnemies && recentlyHit && theirHp > myHp + 0.08)) {
+                return { k: 'disengage', urgent: myHp < 0.4 || nearbyEnemies >= 2 };
+            }
+        }
         // Team play first: a teammate in trouble outranks our own duel
         if (game.teamMode) {
             const ally = game.players.find(p => p !== me && !p.isDead && p.team === me.team);
@@ -75,7 +84,10 @@
         switch (sit.k) {
             case 'disengage': {
                 const spot = this.retreatSpot(opp);
-                if (spot && !it.attack) { it.goalX = spot.x; it.goalNode = spot.node; it.stop = 10; }
+                if (spot && (sit.urgent || !it.attack)) {
+                    it.goalX = spot.x; it.goalNode = spot.node; it.stop = 10;
+                    if (sit.urgent) { it.attack = false; it.jump = null; it.snatch = null; it.crouch = false; }
+                }
                 // block anything coming while we back off
                 if (Math.abs(BotSim.cx(opp) - BotSim.cx(me)) < this.reachOf(opp) + 30 && opp.cd <= 4 && this.skill('shield')) it.shield = true;
                 break;

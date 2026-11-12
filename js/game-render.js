@@ -40,6 +40,11 @@ Object.assign(Game.prototype, {
         let tx = AW / 2, ty = AH / 2, tz = 1, fx0 = null, fx1 = null;
         const zmax = Math.max(1.08, Math.min(2.2, 0.62 / vs));            // phones: zoom in until fighters are about 62% of full size
         const alive = this.players.filter(p => !p.isDead && p.joints);
+        // The player's view should follow the people they control. Let bots
+        // influence framing, but never let a cluster of bots drag the camera
+        // away from a living human fighter.
+        const humans = alive.filter(p => !p.isBot);
+        const focus = humans.length ? humans : alive;
         if (this.roundOver && this.winner && !this.winner.isDead && this.winner.joints) {
             const c = this.winner.joints[2];
             tx = c.x; ty = c.y - 20; tz = Math.max(1.35, zmax);     // push in on the winner
@@ -50,17 +55,26 @@ Object.assign(Game.prototype, {
                 x0 = Math.min(x0, c.x); x1 = Math.max(x1, c.x);
                 y0 = Math.min(y0, c.y); y1 = Math.max(y1, c.y);
             }
-            fx0 = x0; fx1 = x1;
+            let focusX = 0, focusY = 0;
+            let focusMinX = Infinity, focusMaxX = -Infinity;
+            for (const p of focus) {
+                const c = p.joints[2];
+                focusX += c.x; focusY += c.y;
+                focusMinX = Math.min(focusMinX, c.x); focusMaxX = Math.max(focusMaxX, c.x);
+            }
+            focusX /= focus.length; focusY /= focus.length;
+            fx0 = focusMinX; fx1 = focusMaxX;
+            tx = focusX; ty = focusY;
             if (zmax > 1.08) {
-                // small screen: as close as keeps the whole group in view with a margin
-                const fit = Math.min(cw / (vs * (x1 - x0 + 360)), ch / (vs * (y1 - y0 + 300)));
+                // Fit the entire active group around the human-centered target.
+                // This keeps bots visible without allowing them to recenter the view.
+                const halfW = Math.max(Math.abs(x0 - focusX), Math.abs(x1 - focusX));
+                const halfH = Math.max(Math.abs(y0 - focusY), Math.abs(y1 - focusY));
+                const fit = Math.min(cw / (vs * (halfW * 2 + 260)), ch / (vs * (halfH * 2 + 260)));
                 tz = Math.max(1, Math.min(zmax, fit));
-                tx = (x0 + x1) / 2; ty = (y0 + y1) / 2;
             } else {
                 const spread = Math.max((x1 - x0) / AW, (y1 - y0) / AH);
                 tz = Math.max(1, Math.min(1.08, 1.12 - spread * 0.6));
-                tx = AW / 2 + ((x0 + x1) / 2 - AW / 2) * 0.6;
-                ty = AH / 2 + ((y0 + y1) / 2 - AH / 2) * 0.5;
             }
         }
         const k = 1 - Math.pow(0.92, Math.max(dt, 0.35));
@@ -68,16 +82,17 @@ Object.assign(Game.prototype, {
         cam.x += (tx - cam.x) * k;
         cam.y += (ty - cam.y) * k;
         const hw = cw / (2 * vs * cam.zoom), hh = ch / (2 * vs * cam.zoom);   // half the view, in arena units
-        // The camera may follow fighters clustered at one side up to 5% past the arena
-        // edge, but only while every one of them stays in view with a margin. That gives
-        // the backdrop real camera motion to parallax against.
-        const os = AW * 0.05;
+        // Keep the human focus inside the view when possible. If multiple human
+        // players spread wider than the viewport, center them without an inverted
+        // clamp (which previously snapped the camera to one edge of the group).
         if (2 * hw >= AW) cam.x = AW / 2;                                   // the window is wider than the arena: stay centred
         else {
             let lo = hw, hi = AW - hw;
             if (fx0 !== null) {
-                lo = Math.min(hw, Math.max(hw - os, fx1 - hw + 70));
-                hi = Math.max(AW - hw, Math.min(AW - hw + os, fx0 + hw - 70));
+                const margin = Math.min(70, hw * 0.12);
+                const focusLo = Math.max(hw, fx1 - hw + margin);
+                const focusHi = Math.min(AW - hw, fx0 + hw - margin);
+                if (focusLo <= focusHi) { lo = focusLo; hi = focusHi; }
             }
             cam.x = Math.max(lo, Math.min(hi, cam.x));
         }
@@ -213,6 +228,8 @@ Object.assign(Game.prototype, {
     },
 
     drawHUD(ctx, W, H) {
+        const touchScale = typeof this.isTouchDevice === 'function' && this.isTouchDevice() ? 0.88 : 1;
+        if (touchScale !== 1) { ctx.save(); ctx.scale(touchScale, touchScale); W /= touchScale; H /= touchScale; }
         const n = this.players.length;
         const gap = 8;
         const rows = n > 5 ? 2 : 1;
@@ -231,7 +248,11 @@ Object.assign(Game.prototype, {
         const by = n <= 2 ? 12 : 14 + rows * (cardH + 6) + 4;
         ctx.save();
         ctx.textAlign = 'center';
-        this.roundRect(ctx, W / 2 - 74, by, 148, 40, 20);
+        const sceneLabel = this.sceneName().toUpperCase();
+        ctx.font = '600 10px Orbitron, sans-serif';
+        const sceneLabelWidth = ctx.measureText(sceneLabel).width;
+        const badgeW = Math.min(Math.max(148, sceneLabelWidth + 28), Math.max(120, W - 24));
+        this.roundRect(ctx, W / 2 - badgeW / 2, by, badgeW, 40, 20);
         ctx.fillStyle = 'rgba(8,12,26,0.6)';
         ctx.fill();
         ctx.strokeStyle = 'rgba(255,255,255,0.18)';
@@ -242,7 +263,14 @@ Object.assign(Game.prototype, {
         ctx.fillText(`ROUND ${this.levelNum}`, W / 2, by + 18);
         ctx.fillStyle = 'rgba(255,255,255,0.6)';
         ctx.font = '600 10px Orbitron, sans-serif';
-        ctx.fillText(this.sceneName().toUpperCase(), W / 2, by + 33);
+        // Widen the badge to the actual scene name so Canvas does not horizontally
+        // compress long holiday names into the old 128px label area.
+        const availableLabelWidth = badgeW - 24;
+        if (sceneLabelWidth > availableLabelWidth) {
+            const labelSize = Math.max(7, 10 * availableLabelWidth / sceneLabelWidth);
+            ctx.font = `600 ${labelSize}px Orbitron, sans-serif`;
+        }
+        ctx.fillText(sceneLabel, W / 2, by + 33);
         // Kill goal under the round badge: first to 10, or each team's combined total toward 20
         ctx.font = '800 10px Orbitron, sans-serif';
         if (this.teamMode) {
@@ -265,6 +293,7 @@ Object.assign(Game.prototype, {
         ctx.restore();
         this.feedY = n <= 2 ? 100 : by + 84;
         this.drawFeed(ctx, W);
+        if (touchScale !== 1) ctx.restore();
     },
 
     drawCard(ctx, p, x, y, w, h, compact) {
@@ -282,7 +311,10 @@ Object.assign(Game.prototype, {
             ctx.font = '800 11px Orbitron, sans-serif';
             ctx.textAlign = 'left';
             ctx.fillStyle = p.teamColor || (p.isBot ? StickArt.shade(p.color, 1.35) : '#fff');
-            if (!p.isBot) ctx.fillText('YOU', x + 12, y + 15);
+            const local = this.mode === 'online' ? this.multiplayer?.localSeats?.includes(p.id) : !p.isBot;
+            const localIndex = local && this.mode === 'online' ? this.multiplayer.localSeats.indexOf(p.id) : -1;
+            const compactName = this.mode === 'online' ? (local ? (this.multiplayer.localSeats.length > 1 ? `YOU ${localIndex + 1}` : 'YOU') : p.isBot ? `B${p.id + 1}` : String(p.label || 'P').slice(0, 3).toUpperCase()) : (local ? 'YOU' : '');
+            if (compactName) ctx.fillText(compactName, x + 12, y + 15, Math.max(10, w - 36));
             ctx.textAlign = 'right';
             ctx.fillStyle = '#fff';
             ctx.fillText(String(p.kills), x + w - 8, y + 15);
@@ -304,9 +336,11 @@ Object.assign(Game.prototype, {
             ctx.restore();
             return;
         }
-        const name = p.isBot ? '' : 'YOU';
+        const local = this.mode === 'online' ? this.multiplayer?.localSeats?.includes(p.id) : !p.isBot;
+        const localIndex = local && this.mode === 'online' ? this.multiplayer.localSeats.indexOf(p.id) : -1;
+        const name = this.mode === 'online' ? (local ? (this.multiplayer.localSeats.length > 1 ? `YOU ${localIndex + 1}` : 'YOU') : p.label || (p.isBot ? `BOT ${p.id + 1}` : 'PLAYER')) : (p.isBot ? '' : 'YOU');
         ctx.font = '800 12px Orbitron, sans-serif';
-        ctx.fillStyle = p.isBot && BOT_PROFILES[p.difficulty] ? StickArt.shade(BOT_PROFILES[p.difficulty].color, 1.35) : '#fff';
+        ctx.fillStyle = p.isBot && BOT_PROFILES[p.difficulty] ? StickArt.shade(BOT_PROFILES[p.difficulty].color, 1.35) : p.teamColor || '#fff';
         ctx.textAlign = 'left';
         ctx.fillText(name, x + 14, y + 17);
         ctx.textAlign = 'right';

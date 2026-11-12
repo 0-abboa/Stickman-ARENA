@@ -207,6 +207,8 @@ Object.assign(Player.prototype, {
         const feet = this.y + this.height;
         const prevFeet = this.prevY + (this.prevH || this.height);
         const oy = Math.abs(feet - prevFeet) > 40 ? feet : prevFeet + (feet - prevFeet) * alpha;
+        this.touchAnchorX = ox;
+        this.touchAnchorY = oy;
         const rise = this.grounded ? 0 : Math.max(-1, Math.min(1, -this.velocity.y / 12));
         const sx = (1 - rise * 0.05 + this.squash * 0.25) * this.scale;
         const sy = (1 + rise * 0.08 - this.squash * 0.3) * this.scale;

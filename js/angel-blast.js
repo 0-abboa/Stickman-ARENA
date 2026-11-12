@@ -97,7 +97,7 @@
             AudioSys.playAngelBlast();
             for (const t of this.players) {
                 if (t === p || t.isDead || t.team === p.team) continue;
-                const dist = Math.hypot(cx - (t.x + t.width / 2), cy - (t.y + t.height / 2));
+                const dist = t.touchDistanceToPoint(cx, cy);
                 if (dist < R) {
                     t.lastHitType = 'bird_crystal'; t.lastHitAt = this.frameCount;
                     t.takeDamage(20, p);

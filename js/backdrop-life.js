@@ -67,20 +67,86 @@
         step(L, dt) { for (const b of L.items) { b.x += b.v * dt; b.y += Math.sin(b.ph * 0.1) * 0.3 * dt; b.ph += 0.25 * dt; b.trail.unshift([b.x, b.y]); if (b.trail.length > 14) b.trail.pop(); if (b.x > L.x1 + 120) { b.x = L.x0 - 120; b.trail = []; } } },
         draw(ctx, L) { for (const b of L.items) { b.trail.forEach(([x, y], i) => glow(ctx, x - i * 2, y, 10 - i * 0.5, '255,140,40', 0.4 - i * 0.025)); glow(ctx, b.x, b.y, 22, '255,170,60', 0.6); bird(ctx, b.x, b.y, b.s, b.ph, 'rgba(255,214,120,0.95)'); } }
     };
+    // A dragon crossing the far sky now and then. It is scenery, not a map feature: small, far away, pushed into the haze
+    // of its layer, and quick (it is across the arena in a few seconds). A proper dragon silhouette: plump torso, a long
+    // S-curved neck and a horned head, two big bat wings that beat (the downstroke is faster than the upstroke, the body
+    // rises and falls against them), folded legs, and a long tail that swishes a little behind the beat. Now and then a
+    // jet of fire.
     K.dragon = {
-        f: 0.1,
-        spawn(L) { L.items.push({ x: L.x0 - 300, y: L.H * 0.22, v: 1.1, ph: 0, wait: 200 + R() * 600 }); },
-        step(L, dt) { const d = L.items[0]; if (d.wait > 0) { d.wait -= dt; return; } d.x += d.v * dt; d.ph += 0.07 * dt; d.y = L.H * 0.22 + Math.sin(d.ph * 0.3) * 18; if (d.x > L.x1 + 300) { d.x = L.x0 - 300; d.wait = 700 + R() * 1200; } },
+        f: 0.08,
+        spawn(L) { L.fog = Math.max(L.fog, 0.5); L.items.push({ x: L.x0 - 300, y: L.H * 0.2, v: 3.3, ph: 0, wait: 160 + R() * 500, breath: 0, breathIn: 90 + R() * 160 }); },
+        step(L, dt) {
+            const d = L.items[0];
+            if (d.wait > 0) { d.wait -= dt; return; }
+            d.x += d.v * dt; d.ph += 0.19 * dt;
+            d.y = L.H * 0.2 + Math.sin(d.ph * 0.12) * 18 + (d.x - L.x0) * 0.012;
+            if (d.breath <= 0) { d.breathIn -= dt; if (d.breathIn <= 0) { d.breath = 1; d.breathIn = 300 + R() * 400; } } else { d.breath += dt / 38; if (d.breath > 3) d.breath = 0; }
+            if (d.x > L.x1 + 300) { d.x = L.x0 - 300; d.wait = 500 + R() * 900; d.breath = 0; }
+        },
         draw(ctx, L) {
             const d = L.items[0]; if (d.wait > 0) return;
-            const s = 2.4, f = Math.sin(d.ph) * 16 * s * 0.4, c = tint(L, '#120a10');
-            ctx.save(); ctx.translate(d.x, d.y); ctx.fillStyle = c; ctx.strokeStyle = c; ctx.lineCap = 'round';
-            ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(-60, 6); ctx.quadraticCurveTo(-30, -6 + Math.sin(d.ph * 0.5) * 6, 0, 0); ctx.quadraticCurveTo(20, -4, 34, -10); ctx.stroke();
-            ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-60, 6); ctx.quadraticCurveTo(-80, 14, -96, 8 + Math.sin(d.ph * 0.6) * 6); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(34, -10); ctx.lineTo(46, -8); ctx.lineTo(36, -4); ctx.fill();
-            for (const sgn of [1, -0.6]) { ctx.beginPath(); ctx.moveTo(-10, -2); ctx.quadraticCurveTo(-20, -40 * sgn - f, -50, -46 * sgn - f); ctx.lineTo(-36, -18 * sgn - f * 0.5); ctx.lineTo(-30, -26 * sgn - f * 0.6); ctx.lineTo(-20, -8); ctx.closePath(); ctx.fill(); }
+            const S = 1.45, t = d.ph;
+            // wing beat: a stroke that is quick going down and slower coming up
+            const beat = Math.sin(t) + 0.28 * Math.sin(2 * t + 0.6), bob = -beat * 5 * S * 0.6;
+            const body = tint(L, '#1b1016'), belly = tint(L, '#5a2a26', 0.9), memb = tint(L, '#33161d', 0.92), membFar = tint(L, '#28101a', 0.9), bone = tint(L, '#0f0709'), rim = tint(L, '#a14a34', 0.7);
+            const ox = d.x, oy = d.y + bob;
+            ctx.save(); ctx.translate(ox, oy); ctx.scale(S, S); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            const breathing = d.breath > 0.05 && d.breath < 3, open = breathing ? Math.min(1, d.breath * 3) * (d.breath > 2.3 ? Math.max(0, (3 - d.breath) / 0.7) : 1) : 0;
+            const wing = (far) => {
+                const ph = far ? t - 0.45 : t, fl = Math.sin(ph) + 0.28 * Math.sin(2 * ph + 0.6), lag = Math.sin(ph - 0.9) + 0.28 * Math.sin(2 * ph - 0.3);
+                const sx = 4 + (far ? 8 : 0), sy = -10 - (far ? 3 : 0), k = far ? 0.85 : 1;
+                // arm: shoulder -> elbow -> wrist; angles measured from straight up, positive toward the tail
+                const a1 = (0.25 - 1.0 * fl) , a2 = a1 + 0.5 - 0.35 * lag;
+                const el = { x: sx - Math.sin(a1) * 34 * k, y: sy - Math.cos(a1) * 34 * k }, wr = { x: el.x - Math.sin(a2) * 42 * k, y: el.y - Math.cos(a2) * 42 * k };
+                const tips = [], lens = [66, 76, 70, 52];
+                for (let j = 0; j < 4; j++) { const a = a2 + 0.7 + j * 0.46 - 0.55 * lag * (0.3 + j * 0.25); tips.push({ x: wr.x - Math.sin(a) * lens[j] * k, y: wr.y - Math.cos(a) * lens[j] * k }); }
+                const root = { x: -16, y: 2 };
+                ctx.fillStyle = far ? membFar : memb; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(el.x, el.y); ctx.lineTo(wr.x, wr.y);
+                let prev = wr;
+                for (const tp of tips) { const mx = (prev.x + tp.x) / 2, my = (prev.y + tp.y) / 2; ctx.quadraticCurveTo(mx + (wr.x - mx) * 0.3, my + (wr.y - my) * 0.3, tp.x, tp.y); prev = tp; }
+                ctx.quadraticCurveTo((prev.x + root.x) / 2 + 6, (prev.y + root.y) / 2 + 4, root.x, root.y); ctx.closePath(); ctx.fill();
+                ctx.strokeStyle = bone; ctx.lineWidth = 2.2; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(el.x, el.y); ctx.lineTo(wr.x, wr.y); ctx.stroke();
+                ctx.lineWidth = 1.3; for (const tp of tips) { ctx.beginPath(); ctx.moveTo(wr.x, wr.y); ctx.lineTo(tp.x, tp.y); ctx.stroke(); }
+            };
+            wing(true);
+            // tail: a long taper that swishes, each part a little behind the one before
+            const tail = []; for (let i = 0; i <= 14; i++) { const u = i / 14; tail.push({ x: -22 - u * 108, y: 4 + u * 10 + Math.sin(t * 0.9 - u * 4.2) * (2 + u * 12) }); }
+            ctx.fillStyle = body; ctx.beginPath(); ctx.moveTo(-22, -7);
+            for (let i = 0; i <= 14; i++) ctx.lineTo(tail[i].x, tail[i].y - 9 * Math.pow(1 - i / 14, 0.9) - 0.6);
+            for (let i = 14; i >= 0; i--) ctx.lineTo(tail[i].x, tail[i].y + 9 * Math.pow(1 - i / 14, 0.9) + 0.6);
+            ctx.lineTo(-22, 10); ctx.closePath(); ctx.fill();
+            const te = tail[14], tp = tail[13], ta = Math.atan2(te.y - tp.y, te.x - tp.x);
+            ctx.save(); ctx.translate(te.x, te.y); ctx.rotate(ta); ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(-4, -11, -16, 0); ctx.quadraticCurveTo(-4, 11, 0, 0); ctx.fill(); ctx.restore();
+            // hind legs and torso
+            const leg = (x, off) => { ctx.strokeStyle = bone; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(x, 6); ctx.lineTo(x - 7, 15 + Math.sin(t + off) * 2); ctx.lineTo(x - 15, 12 + Math.sin(t + off) * 2); ctx.stroke(); };
+            leg(-12, 0.3); leg(10, 1.1);
+            ctx.fillStyle = body; ctx.beginPath(); ctx.ellipse(0, 0, 29, 13, -0.08, 0, TAU); ctx.fill();
+            ctx.fillStyle = belly; ctx.beginPath(); ctx.ellipse(1, 5.5, 25, 6, -0.08, 0, Math.PI); ctx.fill();
+            // dorsal spikes along back, neck and tail root
+            ctx.fillStyle = bone; for (let i = -4; i <= 4; i++) { const x = i * 6, y = -12 + Math.abs(i) * 0.5; ctx.beginPath(); ctx.moveTo(x - 2.5, y + 1); ctx.lineTo(x - 1, y - 5.5); ctx.lineTo(x + 2, y + 1); ctx.fill(); }
+            // neck: an S that sways a beat behind the wings; the head rides at the end of it
+            const nk = Math.sin(t - 0.8) * 3.5, n0 = { x: 22, y: -6 }, n1 = { x: 38 + nk * 0.3, y: -26 + nk }, n2 = { x: 56, y: -22 + nk * 0.7 }, hd = { x: 62, y: -26 + nk * 0.9 };
+            ctx.fillStyle = body; ctx.beginPath(); ctx.moveTo(n0.x, n0.y - 9);
+            ctx.bezierCurveTo(n1.x - 6, n1.y - 6, n2.x - 4, n2.y - 7, hd.x, hd.y - 6);
+            ctx.lineTo(hd.x + 1, hd.y + 6); ctx.bezierCurveTo(n2.x + 2, n2.y + 8, n1.x + 8, n1.y + 12, n0.x + 2, n0.y + 9); ctx.closePath(); ctx.fill();
+            // head
+            ctx.save(); ctx.translate(hd.x, hd.y); ctx.rotate(0.12 - open * 0.0 + Math.sin(t - 1.1) * 0.05);
+            ctx.save(); ctx.translate(2, 3); ctx.rotate(open * 0.5); ctx.fillStyle = body; ctx.beginPath(); ctx.moveTo(-3, 0); ctx.lineTo(19, 1); ctx.lineTo(23, 4); ctx.lineTo(8, 6); ctx.lineTo(-3, 5); ctx.closePath(); ctx.fill(); ctx.restore();
+            ctx.fillStyle = body; ctx.beginPath(); ctx.moveTo(-6, -6); ctx.quadraticCurveTo(4, -9, 17, -4); ctx.quadraticCurveTo(26, -2, 27, 2); ctx.lineTo(10, 4); ctx.lineTo(-4, 4); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = bone; ctx.beginPath(); ctx.moveTo(-3, -6); ctx.quadraticCurveTo(-12, -14, -22, -9); ctx.quadraticCurveTo(-12, -9, -2, -3); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(1, -7); ctx.quadraticCurveTo(-3, -17, -13, -18); ctx.quadraticCurveTo(-4, -13, 4, -6); ctx.fill();
+            ctx.fillStyle = '#ffb040'; ctx.beginPath(); ctx.ellipse(8, -3, 2, 1.2, 0.2, 0, TAU); ctx.fill();
             ctx.restore();
-            if ((d.ph | 0) % 40 < 6) glow(ctx, d.x + 54, d.y - 8, 26, '255,140,40', 0.5);
+            wing(false);
+            ctx.restore();
+            // eye glow, smoke from the nostril, and the jet of fire
+            const hx = ox + (hd.x + 4) * S, hy = oy + (hd.y - 3) * S, mx = ox + (hd.x + 26) * S, my = oy + (hd.y + 4) * S;
+            glow(ctx, hx, hy, 9 * S, '255,170,60', 0.6);
+            if (breathing) {
+                const k = d.breath, throat = Math.min(1, k * 2.4);
+                glow(ctx, hx - 4 * S, hy + 6 * S, 16 * S * throat, '255,120,30', 0.55 * throat);
+                if (k > 0.3) { const f = Math.min(1, (k - 0.3) / 0.4) * (k > 2.3 ? Math.max(0, (3 - k) / 0.7) : 1); for (let i = 0; i < 26; i++) { const u = i / 26, px = mx + u * 150 * S * f, py = my + u * 22 * S * f + Math.sin(t * 2.2 + i * 1.4) * (3 + u * 9) * S * 0.5; glow(ctx, px, py, (6 + u * 22) * S * 0.7, u < 0.3 ? '255,235,170' : u < 0.65 ? '255,150,50' : '225,70,20', (0.8 - u * 0.6) * f); } }
+            }
         }
     };
     K.witch = {
@@ -366,7 +432,12 @@
     };
     K.runeRings = {
         f: 0.14,
-        spawn(L) { for (let i = 0; i < 3; i++) L.items.push({ x: L.W * (0.2 + i * 0.3) + (R() - 0.5) * 100, y: L.H * (0.2 + R() * 0.2), r: 40 + R() * 40, a: R() * TAU, v: (R() < 0.5 ? -1 : 1) * (0.004 + R() * 0.006) }); },
+        spawn(L) {
+            // Arcane Void always has at least four portal rings, spaced across
+            // the arena so they read as a backdrop motif instead of a cluster.
+            const xs = [0.14, 0.38, 0.62, 0.86];
+            for (const x of xs) L.items.push({ x: L.W * x + (R() - 0.5) * 48, y: L.H * (0.2 + R() * 0.2), r: 40 + R() * 40, a: R() * TAU, v: (R() < 0.5 ? -1 : 1) * (0.004 + R() * 0.006) });
+        },
         step(L, dt) { for (const r of L.items) r.a += r.v * dt; },
         draw(ctx, L) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; for (const r of L.items) { ctx.strokeStyle = 'rgba(190,140,255,0.35)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, TAU); ctx.stroke(); ctx.beginPath(); ctx.arc(r.x, r.y, r.r * 0.8, 0, TAU); ctx.stroke(); for (let k = 0; k < 8; k++) { const a = r.a + k * TAU / 8; ctx.save(); ctx.translate(r.x + Math.cos(a) * r.r * 0.9, r.y + Math.sin(a) * r.r * 0.9); ctx.rotate(a); ctx.strokeStyle = 'rgba(220,180,255,0.7)'; ctx.beginPath(); ctx.moveTo(-3, -3); ctx.lineTo(3, 3); ctx.moveTo(-3, 3); ctx.lineTo(0, -4); ctx.stroke(); ctx.restore(); } } ctx.restore(); }
     };

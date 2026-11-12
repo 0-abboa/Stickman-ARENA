@@ -72,6 +72,8 @@ const BotSim = {
         g.isBot = false; g.shieldActive = false; g.attackCooldown = 1e9; // sims never swing
         g.squash = 0; g.landFx = 0; g.weapon = null; g.dead = false;
         g.ridePlat = src.ridePlat || null;   // mapped onto the sim's copy in step()
+        // slippery / sticky ground the body stands on now is assumed to go on (grip, speed, jump, gravity)
+        if (src.env && (src.env.grip !== 1 || src.env.speed !== 1 || src.env.jump !== 1 || src.env.grav !== 1)) g.env = { grip: src.env.grip, speed: src.env.speed, jump: src.env.jump, grav: src.env.grav };
         return g;
     },
 

@@ -108,6 +108,9 @@ class Projectile {
     // Did the shot's path this frame cross a body? (swept, so fast shots hit)
     static sweepHits(s, fromX, fromY, body) {
         const half = s.size / 2;
+        if (body && typeof body.touchesCapsule === 'function') {
+            return body.touchesCapsule(fromX, fromY, s.x, s.y, half);
+        }
         const dist = Math.hypot(s.x - fromX, s.y - fromY);
         const n = Math.max(1, Math.ceil(dist / 10));
         for (let i = 1; i <= n; i++) {

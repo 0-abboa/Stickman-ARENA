@@ -354,6 +354,122 @@ const HowToVisual = (() => {
                 ctx.restore();
             } };
         },
+        // a campfire (or hot spring, glowing coral, cup of cocoa) mends whoever stands by it
+        heal() {
+            const a = fighter('#42a5f5', 50, 1), c = camera(), fx = [];
+            let x = 50;
+            const fire = (ctx, t) => {
+                const fx0 = 300;
+                // stones, crossed logs, a flickering flame and a warm glow
+                ctx.fillStyle = '#8d8d94'; for (let i = -3; i <= 3; i++) { ctx.beginPath(); ctx.ellipse(fx0 + i * 7, GROUND - 2, 4.5, 3.2, 0, 0, Math.PI * 2); ctx.fill(); }
+                ctx.fillStyle = '#5d4037'; ctx.save(); ctx.translate(fx0, GROUND - 5); ctx.rotate(0.35); ctx.fillRect(-18, -2.5, 36, 5); ctx.rotate(-0.7); ctx.fillRect(-18, -2.5, 36, 5); ctx.restore();
+                ctx.save(); ctx.globalCompositeOperation = 'lighter';
+                const gl = ctx.createRadialGradient(fx0, GROUND - 14, 2, fx0, GROUND - 14, 70); gl.addColorStop(0, 'rgba(255,170,70,0.55)'); gl.addColorStop(1, 'rgba(255,170,70,0)'); ctx.fillStyle = gl; ctx.fillRect(fx0 - 70, GROUND - 84, 140, 140);
+                for (let k = 0; k < 3; k++) {
+                    const w = 11 - k * 3, h = 26 - k * 6 + Math.sin(t * 0.4 + k * 2) * 4, sw = Math.sin(t * 0.23 + k) * 2;
+                    ctx.fillStyle = ['rgba(255,110,30,0.85)', 'rgba(255,180,60,0.9)', 'rgba(255,240,170,0.95)'][k];
+                    ctx.beginPath(); ctx.moveTo(fx0 - w, GROUND - 7); ctx.quadraticCurveTo(fx0 - w * 0.6 + sw, GROUND - 7 - h * 0.6, fx0 + sw, GROUND - 7 - h); ctx.quadraticCurveTo(fx0 + w * 0.6 + sw, GROUND - 7 - h * 0.6, fx0 + w, GROUND - 7); ctx.closePath(); ctx.fill();
+                }
+                ctx.restore();
+            };
+            return { len: 420, draw(ctx, t) {
+                if (t === 0) { x = 50; a.facing = 1; a.health = 22; fx.length = 0; aim(c, 200, GROUND - 70, 1.3, 1, true); }
+                // walk over, stand beside the fire, health climbs back
+                const target = 262; let vx = 0;
+                if (t > 25 && x < target) { vx = Math.min(3.2, (target - x) * 0.2); x += vx; }
+                if (t > 120 && t < 340) a.health = Math.min(100, 22 + (t - 120) * 0.36);
+                if (t > 120 && t < 340 && t % 18 === 0) fx.push({ x: x + 15, y: GROUND - 64, t0: t, kind: 'plus' });
+                move(a, x, GROUND - 60, vx, 0, true);
+                aim(c, 175, GROUND - 70, 1.3, 0.05);
+                stage(ctx, t, c); floor(ctx); fire(ctx, t); a.draw(ctx, fake);
+                for (const e of fx) { const age = t - e.t0; if (age < 0 || age > 40) continue; ctx.save(); ctx.globalAlpha = 1 - age / 40; ctx.fillStyle = '#69f0ae'; ctx.font = '900 16px Orbitron, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('+', e.x + Math.sin(age * 0.3) * 4, e.y - age * 0.9); ctx.restore(); }
+                unstage(ctx);
+                tag(ctx, 'HURT?', 240, 44, '#ff8a80', 24, t, 6, 100);
+                tag(ctx, 'STAND BY A CAMPFIRE', 240, 44, '#ffe082', 20, t, 100, 240);
+                tag(ctx, 'IT HEALS YOU', 240, 72, '#69f0ae', 24, t, 130, 400);
+                tag(ctx, 'HEAL BEFORE YOU FIGHT AGAIN', 240, 44, '#fff', 17, t, 250, 400);
+            } };
+        },
+        // traps always warn first: dust and rattling, then the spikes
+        traps() {
+            const a = fighter('#66bb6a', 40, 1), b = fighter('#ef5350', 258, -1), c = camera(), fx = [];
+            let x = 40, bx = 258, bvy = 0, by = GROUND - 60, bvx = 0;
+            const X0 = 200, X1 = 320;
+            const spikes = (ctx, ext) => {
+                ctx.fillStyle = '#2a2a30'; for (let sx = X0 + 6; sx < X1; sx += 12) ctx.fillRect(sx - 3, GROUND - 1, 6, 2);
+                if (ext > 0) for (let sx = X0 + 6; sx < X1; sx += 12) { ctx.fillStyle = '#cfd8dc'; ctx.beginPath(); ctx.moveTo(sx - 4, GROUND); ctx.lineTo(sx, GROUND - 30 * ext); ctx.lineTo(sx + 4, GROUND); ctx.fill(); ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.fillRect(sx - 1, GROUND - 22 * ext, 1, 10 * ext); }
+            };
+            return { len: 480, draw(ctx, t) {
+                if (t === 0) { x = 40; bx = 258; by = GROUND - 60; bvy = 0; bvx = 0; a.facing = 1; b.facing = -1; b.health = 100; fx.length = 0; aim(c, 240, GROUND - 70, 1.25, 1, true); }
+                const warn = t > 40 && t < 150, fire = t >= 150 && t < 215;
+                // the green fighter walks up, sees the warning, backs off; the red one ignores it
+                let vx = 0;
+                if (t < 60) { vx = 2.6; } else if (t < 100) { vx = -2.2; } else if (t > 300 && t < 410) vx = 3.2;
+                x += vx; if (vx > 0.3) a.facing = 1; else if (vx < -0.3) a.facing = -1;
+                if (t === 150) { b.health = Math.max(40, b.health - 35); hurt(b); bvy = -8; bvx = 4; c.shake = 6; fx.push({ x: bx + 15, y: GROUND - 20, t0: t, kind: 'spark', big: true }); }
+                if (t > 150) { by += bvy; bvy += 0.5; bx += bvx; bvx *= 0.97; if (by >= GROUND - 60) { by = GROUND - 60; bvy = 0; bvx = 0; } }
+                if (warn && t % 5 === 0) fx.push({ x: X0 + 10 + ((t * 37) % 100), y: GROUND, t0: t, kind: 'dust' });
+                move(a, x, GROUND - 60, vx, 0, true); move(b, bx, by, bvx, bvy, by >= GROUND - 60);
+                aim(c, 240, GROUND - 70, 1.25, 0.05);
+                stage(ctx, t, c); floor(ctx);
+                // the warning: the floor lights up in amber stripes that pulse faster as the time runs out
+                if (warn) { const u = (t - 40) / 110, pulse = 0.5 + 0.5 * Math.sin(t * (0.2 + u * 0.7)); ctx.save(); ctx.beginPath(); ctx.rect(X0, GROUND - 6, X1 - X0, 6); ctx.clip(); ctx.fillStyle = `rgba(255,200,40,${0.3 + 0.4 * pulse})`; ctx.fillRect(X0, GROUND - 6, X1 - X0, 6); ctx.strokeStyle = 'rgba(30,20,0,0.75)'; ctx.lineWidth = 3; for (let sx = X0 - 12 + ((t * 0.9) % 16); sx < X1 + 6; sx += 16) { ctx.beginPath(); ctx.moveTo(sx, GROUND); ctx.lineTo(sx + 8, GROUND - 6); ctx.stroke(); } ctx.restore(); }
+                spikes(ctx, fire ? Math.min(1, (t - 150) / 4) * (t > 200 ? Math.max(0, (215 - t) / 15) : 1) : warn && t % 9 < 2 ? 0.08 : 0);
+                a.draw(ctx, fake); b.draw(ctx, fake); drawFx(ctx, fx, t);
+                unstage(ctx);
+                tag(ctx, 'TRAPS WARN YOU FIRST', 240, 40, '#ffca28', 20, t, 30, 150);
+                tag(ctx, 'DUST, SPARKS, LIGHTS', 240, 68, '#fff', 16, t, 60, 150);
+                tag(ctx, 'GET OUT OF THE WAY!', 240, 40, '#ff8a80', 20, t, 150, 250);
+                tag(ctx, 'THEN IT IS SAFE', 240, 40, '#69f0ae', 20, t, 270, 420);
+            } };
+        },
+        // the Tear of God: very rare, one shot, half a second to charge
+        tear() {
+            const a = fighter('#42a5f5', 70, 1), b = fighter('#ef5350', 330, -1), c = camera(), fx = [];
+            const wp = new Weapon(110, -90, 'godtear'), platsF = [{ x: -700, y: GROUND, width: 1900, height: 140, active: true, type: 'static' }];
+            let ax = 70, held = false, pr = null, dead = false, deadAt = 0, hip0 = null, rest = null;
+            return { len: 560, draw(ctx, t) {
+                if (t === 0) { ax = 70; held = false; pr = null; dead = false; wp.owner = null; wp.x = 110; wp.y = wp.prevY = -90; wp.landed = false; wp.active = true; wp.lock = 0; a.weapon = null; a.facing = 1; b.health = 100; fx.length = 0; aim(c, 240, GROUND - 70, 1.1, 1, true); }
+                wp.update({ platforms: platsF });
+                // walk over and take it
+                if (!held && t > 70 && ax < wp.x - 10) { ax += 2.6; }
+                if (!held && t > 70 && ax >= wp.x - 10) { held = true; a.weapon = wp; wp.owner = a; fx.push({ x: ax + 15, y: GROUND - 30, t0: t, kind: 'ring' }); }
+                if (held && t > 110 && ax < 150) ax += 2.4;
+                move(a, ax, GROUND - 60, 0, 0, true);
+                if (held) { wp.x = a.x + 20; wp.y = a.y; }
+                // half a second of charging, locked in place
+                const CH0 = 200, CH = 30, REL = CH0 + CH;
+                if (t >= CH0 && t < REL && !dead) FX.drawers.godcharge && (c._ch = { p: a, def: WEAPONS.godtear, flip: 1, t: 1 - (t - CH0) / CH });
+                else c._ch = null;
+                if (t === REL) { const m = WeaponDefs.muzzle(a, WEAPONS.godtear); pr = new Projectile(m.x, m.y, 46, 0, WEAPONS.godtear.proj, a); a.weapon = null; wp.active = false; }
+                if (pr) { pr.age++; pr.prevX = pr.x; pr.x += pr.vx; if (!dead && pr.x >= b.x + 10) { dead = true; deadAt = t; hip0 = { x: b.joints ? b.joints[2].x : b.x + 15, y: b.joints ? b.joints[2].y : b.y + 30 }; rest = new Ragdoll(b.joints, 0, 0, {}).rest; pr = null; fx.push({ x: b.x + 15, y: b.y + 24, t0: t, kind: 'spark', big: true }); c.shake = 8; } else if (pr.x > 560) pr = null; }
+                if (!dead) move(b, 330, GROUND - 60, 0, 0, true);
+                aim(c, dead ? 330 : 240, GROUND - 70, 1.1, 0.05);
+                stage(ctx, t, c); floor(ctx);
+                if (!held) wp.draw(ctx, 1, []);
+                a.draw(ctx, fake);
+                if (c._ch) FX.drawers.godcharge(ctx, c._ch, c._ch.t);
+                if (pr) pr.draw(ctx, 1);
+                if (!dead) b.draw(ctx, fake);
+                else if (window.GodTear) {
+                    // thrown back (not far, and a little up), the same figure again nine times, each fainter and bluer and flung further
+                    const u = clamp01((t - deadAt) / 200), e = 1 - Math.pow(1 - u, 3), fade = Math.pow(1 - u, 1.15), pose = GodTear.launchPose(rest, 1, u * 9), dx = GodTear.D1 * 0.55 * e, dy = -16 * e;
+                    const col = '#ef5350';
+                    for (let k = GodTear.SOULS; k >= 0; k--) {
+                        const J = pose.map(q => ({ x: hip0.x + dx * (k + 1) + q.x, y: hip0.y + dy + q.y - k * 1.2 * u }));
+                        StickArt.figure(ctx, J, k ? GodTear.tintToward(col, 1 - Math.pow(0.75, k)) : col, { alpha: Math.pow(0.75, k) * fade, expression: 'ko', facing: -1 });
+                    }
+                }
+                drawFx(ctx, fx, t);
+                unstage(ctx);
+                tag(ctx, 'VERY RARE DROP', 240, 40, '#bfe6ff', 22, t, 10, 110);
+                tag(ctx, 'TEAR OF GOD', 240, 68, '#fff', 24, t, 20, 110);
+                tag(ctx, 'HALF A SECOND TO CHARGE', 240, 40, '#ffe082', 18, t, 180, 262);
+                tag(ctx, 'YOU CANNOT MOVE', 240, 66, '#ff8a80', 18, t, 190, 262);
+                tag(ctx, 'ONE SHOT, THROUGH WALLS', 240, 40, '#bfe6ff', 18, t, 270, 360);
+                tag(ctx, 'ALWAYS A KNOCKOUT', 240, 66, '#fff', 20, t, 285, 360);
+            } };
+        },
         // winning
         goal() {
             const cols = ['#ef5350', '#42a5f5', '#66bb6a', '#ffca28'];
@@ -386,7 +502,10 @@ const HowToVisual = (() => {
         ['shield', 'Shield', 'Blocks almost all damage, but lasts only about a second, then needs a moment to recharge. Time it.'],
         ['edge', 'Knockouts', 'Every fighter has 100 health. Hits also knock you back: off the edge or into a pit and you are out at once. Crouching cancels knockback.'],
         ['bounce', 'Bouncers and platforms', 'Springy mats launch you high. Some platforms move, and thin ice can shatter.'],
+        ['heal', 'Campfires heal', 'Hurt? Stand next to a campfire (or a hot spring, glowing coral or a cup of cocoa) and your health climbs back up. Pull out of a fight, heal, then go back.'],
+        ['traps', 'Watch for traps', 'Every arena has traps: spikes, flames, presses, falling blocks and more. Each one warns you first with dust, sparks, flashing lights or a shaking floor, so leave the spot as soon as you see it.'],
         ['angel', 'Angel rounds', 'Every fifth round a crystal falls. Whoever grabs it becomes a flying angel with 300 health. The Nimbus Staff lets you fly and fight back.'],
+        ['tear', 'Tear of God', 'Very rarely a Tear of God falls. It has one shot: after half a second of charging, when you cannot move, it flies through walls and knocks out the first fighter it hits.'],
         ['extras', 'Good to know', '']
     ];
 
@@ -395,7 +514,7 @@ const HowToVisual = (() => {
     function extrasHTML() {
         return touchMode
             ? '<div><b>Controller Party</b><span>Tap JOIN to take a seat, + FIGHTER to fill another, START to begin (up to 10 fighters).</span></div><div><b>Match skill</b><span>Pick the difficulty on the main menu, from Beginning up to Hack.</span></div><div><b>Tips</b><span>Stay on solid ground when low on health. Block a big hit, then punish the swing. In Doubles, stay near your ally.</span></div>'
-            : '<div><b>Controller Party</b><span>Up to 10 fighters on one screen: press Enter (or A on a controller) to join, B to add another fighter, Enter to start.</span></div><div><b>Match skill</b><span>Pick the difficulty on the main menu, from Beginning up to Hack.</span></div><div><b>Living arenas</b><span>Arenas fight back. Smoke, ash and a trembling ground mean lava is about to erupt; bubbles mean a water spout; dust and rattling mean a trap. Bridges sway, ledges crumble, and some things help: springs heal, fans and bubbles lift you.</span></div><div><b>Tips</b><span>Stay on solid ground when low on health. Block a big hit, then punish the swing. In Doubles, stay near your ally.</span></div>';
+            : '<div><b>Controller Party</b><span>Up to 10 fighters on one screen: press Enter (or A on a controller) to join, B to add another fighter, Enter to start.</span></div><div><b>Match skill</b><span>Pick the difficulty on the main menu, from Beginning up to Hack.</span></div><div><b>Living arenas</b><span>Arenas fight back. Smoke, ash and a trembling ground mean lava is about to erupt; bubbles mean a water spout; dust and rattling mean a trap. Bridges sway, ledges crumble, and some things help: springs heal, fans and bubbles lift you.</span></div><div><b>Round events</b><span>Some rounds come with a twist: a caged bomb counting down (if more than one side is standing when it blows, nobody wins), a bomb bouncing around, rising lava, a spike wall sweeping across, a blackout, a closing storm and more.</span></div><div><b>Tips</b><span>Stay on solid ground when low on health. Block a big hit, then punish the swing. In Doubles, stay near your ally.</span></div>';
     }
 
     function show(i) {
@@ -441,7 +560,8 @@ const HowToVisual = (() => {
         const h = document.createElement('h3'); h.className = 'ht-title';
         const p = document.createElement('p'); p.className = 'ht-text';
         const nav = document.createElement('div'); nav.className = 'ht-nav';
-        const back = document.createElement('button'); back.className = 'ht-back'; back.textContent = '‹ Back'; back.type = 'button';
+        const back = document.createElement('button'); back.className = 'ht-back'; back.type = 'button'; back.setAttribute('aria-label', 'Back');
+        back.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 12H5m0 0 7-7m-7 7 7 7"/></svg><span>Back</span>';
         const dotsBox = document.createElement('div'); dotsBox.className = 'ht-dots';
         const dots = pages.map((_, k) => { const d = document.createElement('button'); d.type = 'button'; d.className = 'ht-dot'; d.setAttribute('aria-label', 'Page ' + (k + 1)); d.addEventListener('click', () => show(k)); dotsBox.appendChild(d); return d; });
         const count = document.createElement('span'); count.className = 'ht-count';

@@ -22,7 +22,7 @@ class Level {
         this.isMagicLevel = (levelNum % 5 === 0);
         const materials = Level.available ? Level.available() : (Level.MATERIALS || ['dirt', 'stone', 'cloud', 'ice']);   // seasonal themes only in season (seasons.js)
         this.material = materials[Math.floor(Math.random() * materials.length)];
-        if (this.isMagicLevel && !Level.forcedTheme) this.material = 'magic';
+        if (this.isMagicLevel && !Level.forcedTheme && !Level.testScene) this.material = 'magic';
 
         // Pick a layout (never the same one twice in a row)
         const list = LEVEL_LAYOUTS;

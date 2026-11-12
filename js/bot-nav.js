@@ -149,6 +149,7 @@ class BotNav {
     buildFrom(i, si, body, job) {
         const plats = this.level.platforms;
         const A = plats[i];
+        if (!A) return;   // the ledge it was going to look at is gone
         if (si >= 0) {
             const x = this.samplesFor(A, body.width)[si];
             const keep = job.keep[i];

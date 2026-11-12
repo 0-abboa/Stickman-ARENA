@@ -4,7 +4,7 @@
 (() => {
     const ease = (t) => 1 - Math.pow(1 - Math.max(0, Math.min(1, t)), 3);
     const back = (t) => { t = Math.max(0, Math.min(1, t)); const c = 1.7; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
-    const THEME_LABEL = { dirt: 'Grasslands', stone: 'Old Stone', ice: 'Frozen', cloud: 'Skies', magic: 'Arcane', neon: 'Neon City', lava: 'Inferno', ocean: 'Deep Ocean', candy: 'Candy Land', haunted: 'Haunted', xmas: 'Christmas' };
+    const THEME_LABEL = { dirt: 'Grasslands', stone: 'Old Stone', ice: 'Frozen', cloud: 'Skies', magic: 'Arcane', neon: 'Neon City', lava: 'Inferno', ocean: 'Deep Ocean', candy: 'Candy Land', haunted: 'Haunted', xmas: 'Christmas', newyear: 'New Year', chinesenewyear: 'Chinese New Year', valentines: "Valentine's Day", stpatricks: "St. Patrick's Day", easter: 'Easter', earthday: 'Earth Day', pride: 'Pride', juneteenth: 'Juneteenth', independence: 'Independence Day', laborday: 'Labor Day', diademuertos: 'Día de Muertos', thanksgiving: 'Thanksgiving' };
 
     const cardBase = Game.prototype.drawCard;
     Game.prototype.drawCard = function (ctx, p, x, y, w, h, compact) {

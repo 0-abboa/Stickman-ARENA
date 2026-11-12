@@ -15,6 +15,21 @@
         return coarse || phoneUA || iPadOS;
     };
     let cached = detect();
+    const HOWTO_SEEN_KEY = 'sa-howto-seen';
+    const hasSeenHowto = () => {
+        try { if (localStorage.getItem(HOWTO_SEEN_KEY) === '1') return true; } catch (e) { /* try other storage */ }
+        try {
+            if (document.cookie.split(';').some((part) => part.trim() === HOWTO_SEEN_KEY + '=1')) return true;
+        } catch (e) { /* try session storage */ }
+        try { return sessionStorage.getItem(HOWTO_SEEN_KEY) === '1'; } catch (e) { return false; }
+    };
+    const rememberHowtoSeen = () => {
+        try { localStorage.setItem(HOWTO_SEEN_KEY, '1'); } catch (e) { /* try other storage */ }
+        try {
+            document.cookie = HOWTO_SEEN_KEY + '=1; Path=/; Max-Age=31536000; SameSite=Lax' + (location.protocol === 'https:' ? '; Secure' : '');
+        } catch (e) { /* try session storage */ }
+        try { sessionStorage.setItem(HOWTO_SEEN_KEY, '1'); } catch (e) { /* storage may be unavailable */ }
+    };
     Game.prototype.isTouchDevice = function () { return cached; };
     const apply = () => {
         cached = detect();
@@ -71,19 +86,25 @@
         const fight = section('Fighting',
             `<ul>
                <li>With empty hands you <b>punch</b>. Pick up a weapon to hit harder or from further away.</li>
-               <li>Weapons <b>drop from the sky</b> every few seconds. Walk over one to take it; ${touch ? 'pull the stick down while standing on one' : 'press ' + KEY('S') + ' while standing on one'} to <b>swap</b> for what is lying there.</li>
+               <li>Weapons <b>drop from the sky</b> every few seconds. Walk over one to take it; ${touch ? 'hold Crouch while standing on one' : 'press ' + KEY('S') + ' while standing on one'} to <b>swap</b> for what is lying there.</li>
                <li>Weapons <b>wear out</b> and break after enough use, so use them while you have them.</li>
                <li>Your <b>shield</b> blocks most damage, but it only lasts about a second, then it needs a couple of seconds to recharge. Time it.</li>
                <li>After a swing there is a short cooldown. Heavy weapons hit hardest but recover slowest.</li>
+             </ul>`);
+        const traps = section('Healing and traps',
+            `<ul>
+               <li>A <b>campfire</b> (or a hot spring, glowing coral or a cup of cocoa) <b>heals you</b> while you stand next to it. Step out of the fight, heal, then go back.</li>
+               <li>Every arena has <b>traps</b>: spikes, flames, presses, falling blocks, swinging blades and more. Each one <b>warns you first</b> with dust, sparks, flashing lights or a shaking floor, so leave the spot when you see the warning.</li>
+               <li>Very rarely a <b>Tear of God</b> falls. It has one shot: after half a second of charging, when you cannot move, it flies through walls and knocks out the first fighter it hits.</li>
              </ul>`);
         const crystal = section('Every fifth round',
             `<p>A glowing <b>Angel Crystal</b> drifts down the middle of the arena. Whoever grabs it becomes a flying, nearly unstoppable <b>angel</b> with extra health, and everyone else is protected by an automatic shield for as long as the angel lives. A <b>Nimbus Staff</b> is the answer: it lets you fly and fire a laser at the angel. Take it.</p>`);
         const controls = touch
             ? section('Touch controls',
                 `<ul>
-                   <li><b>Move:</b> touch and drag anywhere on the <b>left half</b> of the screen. A stick appears under your thumb. Push it <b>up</b> to jump, <b>down</b> to crouch.</li>
-                   <li><b>Jump</b>, <b>Attack</b> and <b>Shield</b> are the buttons on the right. Jump twice for a double jump.</li>
-                   <li>The <b>||</b> button at the top pauses the game and lets you leave.</li>
+               <li><b>Move:</b> touch and drag anywhere on the <b>left half</b> of the screen. A stick appears under your thumb. Push it <b>up</b> to jump; downward stick movement only steers left or right and never makes you crouch.</li>
+               <li>On the right, <b>Shield</b> and <b>Attack</b> are the two small buttons. The large <b>Lie Down</b> button ducks low; hold it while standing over a weapon to swap. The large <b>Jump</b> button also works for a double jump.</li>
+               <li>The small pause icon just below the player stat cards pauses the game and lets you leave.</li>
                    <li>Doubles on a phone: you control one fighter and your ally plays alongside you.</li>
                    <li>Hold the phone sideways for the best view.</li>
                  </ul>`)
@@ -108,7 +129,7 @@
                <li>Grab a weapon early, and watch where new ones fall.</li>
                <li>In Doubles, stay near your ally so no one gets mobbed.</li>
              </ul>`);
-        return goal + how + move + fight + crystal + controls + party + skill + tips;
+        return goal + how + move + fight + traps + crystal + controls + party + skill + tips;
     }
 
     function setup() {
@@ -131,13 +152,14 @@
         document.getElementById('howto-done').addEventListener('click', () => { if (window.HowToVisual && HowToVisual.advance()) return; close(); });
         panel.addEventListener('click', (e) => { if (e.target === panel) close(); });
         window.addEventListener('keydown', (e) => { if (e.code === 'Escape' && panel.style.display !== 'none') { close(); e.stopImmediatePropagation(); } }, true);
-        // First visit: show the tutorial once (the flag is set as soon as it opens, so a reload doesn't repeat it)
-        try {
-            if (!localStorage.getItem('sa-howto-seen')) {
-                localStorage.setItem('sa-howto-seen', '1');
-                setTimeout(() => { const g = window.game; if (!g || g.state === 'MENU') open(); }, 700);
-            }
-        } catch (e) { /* storage blocked: skip the auto-open */ }
+        // First visit only. Mirror the flag to a first-party cookie and session storage so a
+        // browser profile that clears localStorage between loads does not reopen the tutorial.
+        // The cover page is an unattended demo, not a player visit.
+        const isCoverPage = /(?:^|\/)cover\.html$/i.test(location.pathname);
+        if (!isCoverPage && !hasSeenHowto()) {
+            rememberHowtoSeen();
+            setTimeout(() => { const g = window.game; if (!g || g.state === 'MENU') open(); }, 700);
+        }
         const rot = document.getElementById('rotate-hint');
         if (rot) rot.addEventListener('click', () => { dismissed = true; update(); });
         // keep the game from scrolling or zooming under a finger

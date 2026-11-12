@@ -40,7 +40,7 @@ Object.assign(Game.prototype, {
         const type = att.weapon && def !== PUNCH ? att.weapon.type : null;
         const hitOnce = new Set();
         for (const box of boxes) for (const p of this.players) {
-            if (p === att || p.isDead || p.team === att.team || hitOnce.has(p) || !Utils.rectIntersect(box, p)) continue;   // no friendly fire
+            if (p === att || p.isDead || p.team === att.team || hitOnce.has(p) || !p.intersectsRect(box)) continue;   // no friendly fire
             hitOnce.add(p);
             if (def.shieldBreak && p.shieldActive && !p.autoShield) this.breakShield(p);
             p.lastHitType = type; p.lastHitAt = this.frameCount;
@@ -119,7 +119,7 @@ Object.assign(Game.prototype, {
         this.fx.flashAt(startX, startY, '120,255,255', 26, 6);
         const hitBox = { x: p.facing === 1 ? startX : startX - b.length, y: startY - b.height / 2, width: b.length, height: b.height };
         for (const t of this.players) {
-            if (t === p || t.isDead || t.team === p.team || !Utils.rectIntersect(hitBox, t)) continue;
+            if (t === p || t.isDead || t.team === p.team || !t.intersectsRect(hitBox)) continue;
             t.lastHitType = 'magic_stick'; t.lastHitAt = this.frameCount;
             t.takeDamage(b.damage, p);
             AudioSys.playHit();
@@ -136,7 +136,7 @@ Object.assign(Game.prototype, {
         AudioSys.playExplosion();
         for (const t of this.players) {
             if (t === p || t.isDead || t.team === p.team) continue;
-            const dist = Math.hypot(cx - (t.x + t.width / 2), cy - (t.y + t.height / 2));
+            const dist = t.touchDistanceToPoint(cx, cy);
             if (dist < 150) {
                 t.lastHitType = 'bird_crystal'; t.lastHitAt = this.frameCount;
                 t.takeDamage(20, p);
@@ -160,7 +160,7 @@ Object.assign(Game.prototype, {
         for (const t of this.players) {
             if (t.isDead || (owner && t !== owner && t.team === owner.team)) continue;   // teammates are safe
             const tx = t.x + t.width / 2, ty = t.y + t.height / 2;
-            const dist = Math.hypot(tx - x, ty - y);
+            const dist = t.touchDistanceToPoint(x, y);
             if (dist >= b.radius) continue;
             const f = 1 - (dist / b.radius) * 0.5;
             const nx = (tx - x) / (dist || 1), ny = (ty - y) / (dist || 1);
@@ -214,7 +214,7 @@ Object.assign(Game.prototype, {
             // An armed mine goes off when an enemy comes close
             if (pr.stuck && pr.spec.stick && pr.age > 20) {
                 const near = this.players.some(p => !p.isDead && p !== pr.owner && !(pr.owner && p.team === pr.owner.team) &&
-                    Math.hypot(p.x + p.width / 2 - pr.x, p.y + p.height / 2 - pr.y) < pr.spec.stick + 20);
+                    p.touchesCircle(pr.x, pr.y, pr.spec.stick + 20));
                 if (near) { this.blast(pr.x, pr.y, pr.spec.blast, pr.owner, pr.wtype); this.splitShot(pr); pr.active = false; continue; }
             }
             if (ev === 'platform' || ev === 'expire') {
@@ -271,7 +271,7 @@ Object.assign(Game.prototype, {
             fx.sparks(cx - dir * 6, cy, shielded ? '170,220,255' : '255,230,160', 6 + Math.min(14, amount | 0),
                       dir ? (dir > 0 ? 0 : Math.PI) : undefined, 1.5, 5 + amount * 0.2);
             if (amount < 1000) {
-                const n = Math.round(amount * 10) / 10;
+                const n = Math.max(1, Math.round(amount));
                 fx.text(cx, p.y - 18, String(n), shielded ? '#90caf9' : amount >= 20 ? '#ff7043' : '#fff59d', 14 + Math.min(16, amount * 0.5));
             }
             if (!shielded && amount >= 8 && amount < 1000) fx.drops(cx, cy, p.isBird ? '#ffffff' : p.color, Math.min(12, Math.round(amount / 2.5)), dir);

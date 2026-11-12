@@ -366,12 +366,14 @@ const BackdropLayers = {
         round(ctx, x, y, h, c) {
             ctx.fillStyle = '#3a2a1b';
             ctx.fillRect(x - h * 0.04, y - h * 0.5, h * 0.08, h * 0.5);
+            // Angular crown built from straight facets, with a flat highlight facet (no circles)
             ctx.fillStyle = c;
-            ctx.beginPath(); ctx.arc(x, y - h * 0.72, h * 0.42, 0, Math.PI * 2); ctx.fill();
-            ctx.beginPath(); ctx.arc(x + h * 0.25, y - h * 0.6, h * 0.28, 0, Math.PI * 2); ctx.fill();
-            ctx.beginPath(); ctx.arc(x - h * 0.26, y - h * 0.62, h * 0.26, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath();
+            [[-0.46, -0.62], [-0.2, -0.98], [0.18, -1.04], [0.46, -0.7], [0.52, -0.36], [0.28, -0.2], [-0.02, -0.12], [-0.34, -0.2], [-0.56, -0.4]]
+                .forEach(([px, py], i) => i ? ctx.lineTo(x + px * h, y + py * h) : ctx.moveTo(x + px * h, y + py * h));
+            ctx.closePath(); ctx.fill();
             ctx.fillStyle = 'rgba(255,250,200,0.14)';
-            ctx.beginPath(); ctx.arc(x - h * 0.12, y - h * 0.82, h * 0.22, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(x - h * 0.36, y - h * 0.66); ctx.lineTo(x - h * 0.06, y - h * 0.92); ctx.lineTo(x - h * 0.1, y - h * 0.6); ctx.closePath(); ctx.fill();
         },
         tower(ctx, x, y, h, c, rng) {
             const w = h * 0.9;

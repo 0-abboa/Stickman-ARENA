@@ -17,6 +17,16 @@ const WeaponMech = (() => {
     const foes = (g, p) => g.players.filter(t => t !== p && !t.isDead && t.team !== p.team);
     const near = (g, p, r, front) => foes(g, p).filter(t => Math.hypot(cx(t) - cx(p), cy(t) - cy(p)) < r && (!front || Math.sign(cx(t) - cx(p)) === p.facing || Math.abs(cx(t) - cx(p)) < 20)).sort((a, b) => Math.abs(cx(a) - cx(p)) - Math.abs(cx(b) - cx(p)));
     const typeOf = (p) => p.weapon ? p.weapon.type : null;
+    const zipPlatform = (p) => !!(p && p.active && p.type !== 'trampoline' && !p.motion && !p.feature && !p.featureTag && !p.noDraw && !p.mech && !p.collapse && p.width >= 60);
+    const zipLanding = (L, p, x, impactY) => {
+        if (!zipPlatform(p) || x < p.x + 20 || x > p.x + p.width - 20 || impactY < p.y || impactY > p.y + 18) return null;
+        const landingY = p.y - 64;
+        for (const q of L.platforms) {
+            if (q === p || !q.active || q.type === 'trampoline' || q.noDraw || q.mech || q.collapse) continue;
+            if (x + 15 > q.x && x - 15 < q.x + q.width && landingY + 4 < q.y + q.height && p.y > q.y) return null;
+        }
+        return { plat: p, x: clamp(x, p.x + 20, p.x + p.width - 20), y: p.y - 46 };
+    };
     const glow = (ctx, x, y, r, rgb, a) => { if (a <= 0.01) return; ctx.save(); ctx.globalCompositeOperation = 'lighter'; const gr = ctx.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, `rgba(${rgb},${Math.min(1, a)})`); gr.addColorStop(1, `rgba(${rgb},0)`); ctx.fillStyle = gr; ctx.fillRect(x - r, y - r, r * 2, r * 2); ctx.restore(); };
     // deal damage as this weapon (death animations, kill credit, statuses all work)
     function strike(g, att, t, dmg, kx, ky, status, type) {
@@ -51,6 +61,12 @@ const WeaponMech = (() => {
     });
     const tempPlat = (g, x, y, w, h, life, look) => {
         const pl = g.level.createPlatform(x, y, w, h); pl.temp = { life, look, max: life }; pl.noDraw = true; pl.mech = true; g.level.platforms.push(pl);
+        // anybody it appears inside is lifted onto it (or, if it is over their head, shoved aside), never left stuck in it
+        for (const q of g.players) {
+            if (q.isDead || q.isBird || q.onCloud || q.x + q.width <= x || q.x >= x + w || q.y + q.height <= y || q.y >= y + h) continue;
+            if (q.y + q.height - y <= 52) { q.y = y - q.height; q.velocity.y = Math.min(0, q.velocity.y); q.grounded = true; q.ridePlat = pl; }
+            else q.x = q.x + q.width / 2 < x + w / 2 ? x - q.width - 1 : x + w + 1;
+        }
         return ent(g, { kind: 'tempPlat', pl, life, look, max: life });
     };
 
@@ -169,7 +185,13 @@ const WeaponMech = (() => {
     M.cards = { use(g, p) { for (let i = 0; i < 3; i++) ent(g, { kind: 'card', owner: p, x: cx(p) + p.facing * (30 + i * 26), y: cy(p) - 20 + i * 12, t: 0, wait: 40 + i * 8, vx: 0, vy: 0, hit: false }); p.attackAnim = 0; return true; } };   // cards hang in the air, then dart at the nearest foe
     M.smokebomb = { hit(g, a, t) { t.confused = 120; if (!t.isBot && !g.demo) g.fx.screenFlash('255,255,255', 0.8); } };   // flash bang: blinded fighters stumble the wrong way
     M.stormbow = { hit(g, a, t) { ent(g, { kind: 'arrowRain', owner: a, x: cx(t), t: 0, life: 70 }); } };   // calls an arrow rain on the target
-    M.compoundbow = { use(g, p) { ent(g, { kind: 'zipArrow', owner: p, x: cx(p), y: cy(p) - 8, vx: p.facing * 18, vy: -2.5, life: 80, x0: cx(p), y0: p.y + 4 }); p.attackAnim = 0; AudioSys.playGun('arrow'); return true; } };   // leaves a zipline behind it
+    M.compoundbow = { use(g, p) {
+        const source = p.grounded && zipPlatform(p.ridePlat) && cx(p) > p.ridePlat.x + 20 && cx(p) < p.ridePlat.x + p.ridePlat.width - 20
+            ? { plat: p.ridePlat, x: clamp(cx(p), p.ridePlat.x + 20, p.ridePlat.x + p.ridePlat.width - 20), y: p.ridePlat.y - 46 }
+            : null;
+        ent(g, { kind: 'zipArrow', owner: p, x: cx(p), y: cy(p) - 8, vx: p.facing * 18, vy: -2.5, life: 80, x0: cx(p), y0: p.y + 4, zipStart: source });
+        p.attackAnim = 0; AudioSys.playGun('arrow'); return true;
+    } };   // leaves a zipline behind it
     M.icebow = { use(g, p) { ent(g, { kind: 'iceArrow', owner: p, x: cx(p), y: cy(p) - 8, vx: p.facing * 16, vy: -2, life: 80 }); p.attackAnim = 0; AudioSys.playGun('arrow'); return true; } };   // freezes a ledge where it lands
     M.boulder = { use(g, p) { ent(g, { kind: 'roller', owner: p, x: cx(p) + p.facing * 40, y: p.y + p.height, dir: p.facing, life: 140, rot: 0, hit: new Set(), boulder: true, airY: p.y + 10, vy: -4 }); p.attackAnim = 0; return true; } };
 
@@ -247,7 +269,25 @@ const WeaponMech = (() => {
             return e.t < e.wait + 60 && !platAt(g.level, e.x, e.y);
         },
         arrowRain(g, e) { e.t++; if (e.t % 4 === 0) { const x = e.x + RND(-70, 70); ent(g, { kind: 'bolt', owner: e.owner, x, y: -20, vx: RND(-0.5, 0.5), vy: 16, life: 70, arrow: true }); } return e.t < e.life; },
-        zipArrow(g, e) { e.vy += 0.12; e.x += e.vx; e.y += e.vy; const q = platAt(g.level, e.x, e.y); for (const t of foes(g, e.owner)) if (Math.abs(cx(t) - e.x) < 16 && Math.abs(cy(t) - e.y) < 30) { strike(g, e.owner, t, 12, Math.sign(e.vx) * 5, -3, null, 'compoundbow'); return false; } if (q || --e.life <= 0) { if (q && typeof Features !== 'undefined' && Math.abs(e.x - e.x0) > 160) { const z = Features.KINDS.zipline; const inst = { kind: 'zipline', x0: e.x0, y0: e.y0, x1: e.x, y1: e.y, riders: new Map(), temp: 600 }; if (inst.y1 < inst.y0) { [inst.x0, inst.x1] = [inst.x1, inst.x0]; [inst.y0, inst.y1] = [inst.y1, inst.y0]; } (g.level.features || (g.level.features = [])).push(inst); ent(g, { kind: 'zipLife', inst, life: 600 }); } return false; } return true; },
+        zipArrow(g, e) {
+            e.vy += 0.12; e.x += e.vx; e.y += e.vy;
+            const q = platAt(g.level, e.x, e.y);
+            for (const t of foes(g, e.owner)) if (Math.abs(cx(t) - e.x) < 16 && Math.abs(cy(t) - e.y) < 30) { strike(g, e.owner, t, 12, Math.sign(e.vx) * 5, -3, null, 'compoundbow'); return false; }
+            if (q || --e.life <= 0) {
+                const end = q && zipLanding(g.level, q, e.x, e.y);
+                if (end && e.zipStart && zipPlatform(e.zipStart.plat) && end.plat !== e.zipStart.plat && Math.abs(end.x - e.zipStart.x) > 160 && typeof Features !== 'undefined') {
+                    const zips = g.level.features || (g.level.features = []), own = zips.filter(f => f.kind === 'zipline' && f.source === 'compoundbow');
+                    if (own.length < 2) {
+                        const a = { ...e.zipStart }, b = { ...end };
+                        if (b.y < a.y) { const swap = { ...a }; Object.assign(a, b); Object.assign(b, swap); }
+                        const inst = { kind: 'zipline', source: 'compoundbow', x0: a.x, y0: a.y, x1: b.x, y1: b.y, landings: [a.plat, b.plat], riders: new Map(), temp: 600 };
+                        zips.push(inst); ent(g, { kind: 'zipLife', inst, life: 600 });
+                    }
+                }
+                return false;
+            }
+            return true;
+        },
         zipLife(g, e) { if (--e.life <= 0) { const i = g.level.features.indexOf(e.inst); if (i >= 0) g.level.features.splice(i, 1); return false; } return true; },
         iceArrow(g, e) { e.vy += 0.12; e.x += e.vx; e.y += e.vy; for (const t of foes(g, e.owner)) if (Math.abs(cx(t) - e.x) < 16 && Math.abs(cy(t) - e.y) < 30) { strike(g, e.owner, t, 12, Math.sign(e.vx) * 4, -3, { freeze: 60 }, 'icebow'); return false; } const q = platAt(g.level, e.x, e.y); if (q || --e.life <= 0 || e.y > g.level.height) { tempPlat(g, e.x - 40, (q ? e.y - 30 : e.y) - 6, 80, 12, 260, 'ice'); g.fx.shards(e.x - 20, e.y - 10, 40, 20, 'rgba(220,245,255,0.95)', 10); return false; } return true; },
         twister(g, e) { if (--e.life <= 0) return false; e.x += e.dir * 2; const gr = groundBelow(g.level, e.x, e.y - 8); if (!gr) return false; e.y = gr.y; if (R() < 0.7) g.fx.swirl(e.x, e.y - RND(0, 120), { shape: 'dot', color: '220,230,240', rise: 30, spin: 9, r0: 30, r1: 22, size: 2, life: 22 }); for (const t of foes(g, e.owner)) { const dx = e.x - cx(t), d = Math.abs(dx); if (d < 120 && Math.abs(cy(t) - (e.y - 60)) < 100) { t.velocity.x += Math.sign(dx) * 0.6; t.velocity.y -= 0.7; t.grounded = false; if (d < 26 && (t.twistAt || 0) < g.frameCount - 40) { t.twistAt = g.frameCount; strike(g, e.owner, t, 6, (R() < 0.5 ? -1 : 1) * 10, -12, null, 'stormstaff'); } } } return true; },

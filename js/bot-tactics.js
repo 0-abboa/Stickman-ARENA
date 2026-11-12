@@ -299,7 +299,14 @@ Object.assign(BotBrain.prototype, {
     tacticBird(it, opp) {
         const me = this.body, P = this.profile;
         it.mode = 'bird';
-        if (!opp) { it.fly = { x: this.game.level.width / 2, y: 150 }; return; }
+        if (!opp) { it.fly = { x: this.game.level.width / 2, y: 150 }; }
+        if (!opp) {
+            const close = this.game.players.filter(p => p !== me && !p.isDead && p.team !== me.team)
+                .map(p => ({ p, d: Math.hypot(BotSim.cx(p) - BotSim.cx(me), p.y + p.height / 2 - (me.y + me.height / 2)) }))
+                .filter(o => o.d < 150).sort((a, b) => a.d - b.d)[0];
+            if (close && me.attackCooldown <= 0 && Math.random() < 0.72 + 0.28 * P.aggression) it.attack = true;
+            return;
+        }
         const toward = BotSim.cx(opp) >= BotSim.cx(me) ? 1 : -1;
         const push = this.pushDir(opp) || toward;
         const d = Math.hypot(BotSim.cx(opp) - BotSim.cx(me), (opp.y + opp.height / 2) - (me.y + me.height / 2));
@@ -326,13 +333,20 @@ Object.assign(BotBrain.prototype, {
         }
         it.fly = { x: tx + this.flyJitter, y: ty + this.flyJitter * 0.5 };
         it.face = toward;
-        if (me.attackCooldown <= 0 && d < 140) {
-            const a = Math.atan2(opp.y - me.y, opp.x - me.x);
-            const lethal = this.knockLethal(opp, 1, Math.cos(a) * 20, Math.sin(a) * 20);
-            const outward = Math.sign(opp.x - me.x) === push && Math.abs(Math.sin(a)) < 0.6;
+        // The angel blast is radial and already hits every enemy in its radius.
+        // Pick any nearby opponent for the timing read instead of requiring the
+        // currently selected chase target to be the one in range.
+        const blastTarget = this.game.players.filter(p => p !== me && !p.isDead && p.team !== me.team)
+            .map(p => ({ p, d: Math.hypot(BotSim.cx(p) - BotSim.cx(me), p.y + p.height / 2 - (me.y + me.height / 2)) }))
+            .filter(o => o.d < 150).sort((a, b) => a.d - b.d)[0];
+        if (me.attackCooldown <= 0 && blastTarget) {
+            const target = blastTarget.p;
+            const ta = Math.atan2(target.y - me.y, target.x - me.x);
+            const lethal = this.knockLethal(target, 1, Math.cos(ta) * 20, Math.sin(ta) * 20);
+            const outward = Math.sign(target.x - me.x) === push && Math.abs(Math.sin(ta)) < 0.6;
             const A = P.aggression;
-            let chance = lethal || outward ? 0.35 + 0.6 * A : opp.shield ? 0.02 : 0.08 + 0.3 * A;
-            if (shooter) chance = Math.max(chance, 0.2 + 0.5 * A);
+            let chance = lethal || outward ? 0.72 + 0.28 * A : target.shield ? 0.68 : 0.72 + 0.25 * A;
+            if (shooter) chance = Math.max(chance, 0.78 + 0.22 * A);
             if (Math.random() < chance) it.attack = true;
         }
     },
@@ -411,6 +425,20 @@ Object.assign(BotBrain.prototype, {
         if (this.fetchW !== w || falling) { this.fetchW = w; this.fetchSince = this.frame; }
         else if (this.frame - this.fetchSince > (w.type === 'bird_crystal' ? 600 : 480)) this.prizeBan.set(w, this.frame + 900);
         it.goalX = prize.land.x + w.width / 2;
+        // Nobody can time the crystal's seal to the frame: you hover near where it will land, then react once it
+        // opens. Each fighter has a per-crystal position error (how well they guessed the spot) and a reaction time.
+        let sealWait = false;
+        if (w.type === 'bird_crystal') {
+            let ct = this.crystalTiming;
+            if (!ct || ct.w !== w) {
+                const tier = this.difficulty, mag = { easy: 80, medium: 60, hard: 44, nightmare: 32, hack: 24 }[tier] || 50, base = { easy: 26, medium: 18, hard: 12, nightmare: 9, hack: 6 }[tier] || 16;
+                const gauss = () => (Math.random() + Math.random() + Math.random() - 1.5) * 0.8;
+                ct = this.crystalTiming = { w, offset: (Math.random() < 0.5 ? -1 : 1) * mag * (0.55 + Math.random() * 0.45), react: Math.max(4, Math.round(base * (1 + gauss()))), until: null };
+            }
+            if (w.lock <= 0 && ct.until === null) ct.until = this.frame + ct.react;
+            sealWait = ct.until === null || this.frame < ct.until;
+            if (sealWait) it.goalX += ct.offset;
+        }
         it.goalNode = this.nav.ready ? this.nav.nodeBelow(it.goalX, prize.land.y + w.height) : -1;
         // Not getting any closer (blocked, or it sits on something we can't stand on)?
         const d = Math.abs(it.goalX - BotSim.cx(me)) + Math.abs(prize.land.y + w.height - (me.y + me.height));
@@ -418,7 +446,7 @@ Object.assign(BotBrain.prototype, {
         else if (this.frame - this.fetchBestAt > 100 && me.grounded && !falling && w.type !== 'bird_crystal' && !(this.onBouncer(w, prize.land) && w.y > me.y + me.height - 4 && this.frame - this.fetchBestAt < 260)) this.prizeBan.set(w, this.frame + 600);
         it.stop = 4;
         // A sealed crystal can't be taken yet: wait right under where it lands
-        it.snatch = me.weapon || w.lock > 40 ? null : w;
+        it.snatch = me.weapon || w.lock > 40 || sealWait ? null : w;
         // Holding something already: stand on it and crouch to swap (the crystal swaps
         // as it comes down onto us)
         if (prize.swap && Math.abs(it.goalX - BotSim.cx(me)) < 14 && me.grounded) {
@@ -471,7 +499,39 @@ Object.assign(BotBrain.prototype, {
     // Duck or jump incoming bullets / shockwaves (verified by simulation)
     dodgeProjectiles(it, projs) {
         const me = this.body;
-        if (!me.grounded || this.plan || !projs.length) return;
+        if (!projs.length) return;
+        const divine = projs.some(pr => pr.spec && pr.spec.divine);
+        if (!me.grounded) {
+            if (!divine || this.plan) return;
+            const incoming = projs.map(pr => this.pathOf(pr));
+            const steerX = it.fly ? Math.sign(it.fly.x - me.x) : 0;
+            const steerY = it.fly ? Math.sign(it.fly.y - me.y) : 0;
+            const current = BotSim.plan(steerX, 999, steerX, steerY < 0 ? 0 : -1, steerY < 0 ? 40 : 0);
+            if (steerY > 0) current.crouch = 999;
+            if (BotSim.hitBy(me, current, this.world, incoming, 38) < 0) return;
+            const options = [];
+            for (const [x, y, jump] of [[0, 0, false], [-1, 0, false], [1, 0, false], [0, -1, true], [0, 1, false], [-1, -1, true], [1, -1, true], [-1, 1, false], [1, 1, false]]) {
+                const plan = BotSim.plan(x, 999, x, jump ? 0 : -1, jump ? 38 : 0);
+                if (y > 0) plan.crouch = 999;
+                const hit = BotSim.hitBy(me, plan, this.world, incoming, 38);
+                if (hit >= 0) continue;
+                const end = BotSim.run(me, plan, this.world, 38, { untilLand: false });
+                if (end.dead) continue;
+                const gx = it.fly ? it.fly.x : me.x, gy = it.fly ? it.fly.y : me.y;
+                const score = Math.hypot(end.x - gx, end.y - gy) + Math.abs(x - steerX) * 18 + Math.abs(y - steerY) * 18;
+                options.push({ plan, score, x, y });
+            }
+            options.sort((a, b) => a.score - b.score);
+            if (options.length) {
+                const best = options[0];
+                it.fly = { x: me.x + best.x * 150, y: me.y + best.y * 130 };
+                if (best.y < 0) it.fly.y = me.y - 130;
+                it.dodging = true; this.flyAim = null; this.flyNext = 0;
+            }
+            return;
+        }
+        if (this.plan && !divine) return;
+        if (divine && this.plan) this.plan = null;
         const mc = BotSim.cx(me);
         const incoming = projs.map(pr => this.pathOf(pr));
         const mdir = it.goalX === null ? 0 : (Math.sign(it.goalX - mc) || 0);

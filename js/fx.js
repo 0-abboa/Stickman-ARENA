@@ -123,7 +123,7 @@ class FX {
         if (!this.level) return;
         for (const p of this.level.platforms) {
             if (!p.active || x < p.x || x > p.x + p.width || p.y < y - 30 || p.y > y + radius * 0.6) continue;
-            this.decals.push({ plat: p, dx: x - p.x, y: p.y, r: radius * 0.45, scorch: true });
+            this.decals.push({ plat: p, dx: x - p.x, y: p.y, dy: 0, r: radius * 0.45, scorch: true });
             if (this.decals.length > 140) this.decals.shift();
             return;
         }
@@ -216,7 +216,7 @@ class FX {
     landDrop(p) {
         for (const pl of this.level.platforms) {
             if (!pl.active || p.x < pl.x || p.x > pl.x + pl.width || p.y < pl.y || p.y > pl.y + pl.height) continue;
-            this.decals.push({ plat: pl, dx: p.x - pl.x, y: pl.y, r: p.size * (1.6 + Math.random()), color: p.color, seed: Math.random() * 6 });
+            this.decals.push({ plat: pl, dx: p.x - pl.x, y: pl.y, dy: 0, r: p.size * (1.6 + Math.random()), color: p.color, seed: Math.random() * 6 });
             if (this.decals.length > 140) this.decals.shift();
             return true;
         }
@@ -228,6 +228,7 @@ class FX {
         for (const d of this.decals) {
             if (!d.plat.active) continue;
             const x = d.plat.x + d.dx;
+            d.y = d.plat.y + (d.dy || 0);   // stuck to the ledge: it goes wherever the ledge goes
             if (d.scorch) {
                 const g = ctx.createRadialGradient(x, d.y, 2, x, d.y, d.r);
                 g.addColorStop(0, 'rgba(20,15,10,0.55)');

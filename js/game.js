@@ -5,7 +5,7 @@
 // (animation, particles, ragdolls, camera, ambience) runs from animate(dt) with
 // the same scaled dt, so everything slows down together. Combat lives in
 // game-combat.js and drawing in game-render.js.
-const THEME_NAMES = { dirt: 'Golden Meadow', stone: 'Dusk Fortress', ice: 'Aurora Glacier', cloud: 'Sky Kingdom', magic: 'Arcane Void' };
+const THEME_NAMES = { dirt: 'Golden Meadow', stone: 'Dusk Fortress', ice: 'Aurora Glacier', cloud: 'Sky Kingdom', magic: 'Arcane Void', chinesenewyear: 'Chinese New Year' };
 // Solo and Doubles colours: red, blue, green, yellow, dealt out at random each match
 const FOUR_COLORS = ['#e53935', '#1e88e5', '#43a047', '#fdd835'];
 // Controller Party: up to 10 fighters, each given a random unused colour
@@ -88,6 +88,32 @@ class Game {
         document.getElementById('btn-solo').onclick = () => this.startGame('solo');
         document.getElementById('btn-doubles').onclick = () => this.startGame('doubles');
         document.getElementById('btn-party').onclick = () => this.startGame('party');
+        document.getElementById('btn-online').onclick = () => {
+            document.getElementById('online-error').textContent = '';
+            document.getElementById('online-menu').style.display = 'grid';
+            document.getElementById('online-name').focus({ preventScroll: true });
+        };
+        document.getElementById('online-close').onclick = () => { document.getElementById('online-menu').style.display = 'none'; };
+        document.getElementById('online-menu').addEventListener('click', (event) => {
+            if (event.target.id === 'online-menu') event.currentTarget.style.display = 'none';
+        });
+        document.querySelectorAll('.online-format').forEach((button) => {
+            button.onclick = () => {
+                const name = document.getElementById('online-name').value.trim() || 'PLAYER';
+                const partySize = Number(document.getElementById('online-party-size').value) || 1;
+                const teamSize = { teams3: 3, teams4: 4, teams5: 5, teams6: 6 }[button.dataset.format] || 1;
+                if (partySize > teamSize) {
+                    document.getElementById('online-error').textContent = `A local party must fit on one team. Choose ${teamSize} players or fewer for this format.`;
+                    return;
+                }
+                if (!this.multiplayer) {
+                    document.getElementById('online-error').textContent = 'The multiplayer client did not start. Reload the game and try again.';
+                    return;
+                }
+                this.multiplayer.startMatch(button.dataset.format, document.getElementById('bot-difficulty').value, name, partySize);
+            };
+        });
+        document.getElementById('online-status-leave').onclick = () => this.quitGame();
         // Tint the difficulty picker with the chosen tier's colour
         const sel = document.getElementById('bot-difficulty');
         const tint = { easy: '#81c784', medium: '#ffb74d', hard: '#ef5350', nightmare: '#ce93d8', hack: '#18ffff' };
@@ -212,6 +238,11 @@ class Game {
     }
 
     togglePause() {
+        if (this.mode === 'online' && this.multiplayer && this.multiplayer.active) {
+            this.multiplayer.uiPaused = !this.multiplayer.uiPaused;
+            document.getElementById('pause-menu').style.display = this.multiplayer.uiPaused ? 'flex' : 'none';
+            return; // the match simulation continues for everyone
+        }
         // Solo / Doubles keep running behind the menu (you just stand there,
         // like stepping away from an online match); a local party really pauses
         const freezes = this.mode === 'party';
@@ -237,6 +268,8 @@ class Game {
     isTouchDevice() { return 'ontouchstart' in window || navigator.maxTouchPoints > 0; }
 
     quitGame() {
+        if (this.multiplayer && this.multiplayer.active) this.multiplayer.leave(this.multiplayer.isHost);
+        document.getElementById('online-menu').style.display = 'none';
         document.getElementById('lobby-touch').style.display = 'none';
         document.getElementById('pause-menu').style.display = 'none';
         document.getElementById('hud').style.display = 'none';
@@ -247,6 +280,8 @@ class Game {
     }
 
     startLevel(regenerate = true) {
+        this.networkTransitionAt = 0;
+        this.networkTransitionRemaining = 0;
         if (regenerate) this.level.generate(this.levelNum);
         const openMatch = this.matchStart;
         this.matchStart = false;
@@ -257,6 +292,7 @@ class Game {
         this.weaponTimer = 0;
         this.roundOver = false;
         this.slowMotion = false;
+        this.godSlow = 0;
         this.winner = null;
         this.frameCount = 0;
         this.roundTime = 0;
@@ -357,11 +393,13 @@ class Game {
     // without you just like an online one would.
     tick(maxSteps) {
         const now = performance.now();
+        if (this.multiplayer) this.multiplayer.tick(now);
         const frames = this.lastTick === undefined ? 1 : Math.min(maxSteps, Math.max(0, (now - this.lastTick) / (1000 / 60)));
         this.lastTick = now;
         const live = this.state === 'PAUSED' && this.mode !== 'party';   // only a local party truly pauses
         const running = this.state === 'PLAYING' || this.state === 'LOBBY' || live || (this.state === 'MENU' && this.demo);
-        const target = this.slowMotion ? 0.2 : 1;
+        const godSlow = now < (this.godSlow || 0);   // the Tear of God's kill: three real seconds of slow motion
+        const target = this.slowMotion || godSlow ? 0.2 : 1;
         this.timeScale += (target - this.timeScale) * Math.min(1, 0.08 * frames);
         if (Math.abs(target - this.timeScale) < 0.01) this.timeScale = target;
         let dt = running ? this.timeScale * frames : 0;
@@ -369,21 +407,26 @@ class Game {
         if (now < this.countdownEnd) dt = 0;   // match countdown: nothing moves yet
 
         if (running && dt > 0) {
-            this.acc += dt;
-            let steps = 0;
-            while (this.acc >= 1 && steps < maxSteps) {
-                this.acc -= 1;
-                steps++;
-                try {
-                    this.update();
-                } catch (e) {
-                    console.error("Update Error:", e);
+            if (this.multiplayer && this.multiplayer.active && this.multiplayer.isGuest) {
+                this.acc = 0;
+                this.alpha = this.multiplayer.interpolation(now);
+            } else {
+                this.acc += dt;
+                let steps = 0;
+                while (this.acc >= 1 && steps < maxSteps) {
+                    this.acc -= 1;
+                    steps++;
+                    try {
+                        this.update();
+                    } catch (e) {
+                        console.error("Update Error:", e);
+                    }
                 }
+                if (steps >= maxSteps) this.acc = 0;
+                this.alpha = this.timeScale >= 0.999 ? 1 : Math.min(1, this.acc);
             }
-            if (steps >= maxSteps) this.acc = 0;
-            this.alpha = this.timeScale >= 0.999 ? 1 : Math.min(1, this.acc);
         }
-        this.letterbox += ((this.slowMotion && !this.demo ? 1 : 0) - this.letterbox) * Math.min(1, 0.06 * frames);
+        this.letterbox += (((this.slowMotion || godSlow) && !this.demo ? 1 : 0) - this.letterbox) * Math.min(1, 0.06 * frames);
         this.animate(Math.min(dt, 3));
     }
 
@@ -467,12 +510,13 @@ class Game {
             if (!want) { p.shieldActive = false; p.shieldCd = 0; p.shieldTime = 0; p.shieldLatch = false; }
         }
         // An angel always has an answer on the map: if no Nimbus Staff exists 2 seconds in, one drops
-        const staffExists = this.weapons.some(w => w.type === 'magic_stick' && (w.active || w.owner));
+        const staffExists = this.weapons.some(w => (w.type === 'magic_stick' || w.type === 'godtear') && (w.active || w.owner));
         this.staffWait = live && !staffExists ? (this.staffWait || 0) + 1 : 0;
         if (this.staffWait > 120) {
             this.staffWait = 0;
-            this.weapons.push(new Weapon(Utils.random(80, this.level.width - 80), -50, 'magic_stick'));
-            if (!this.demo) this.showMessage('THE NIMBUS STAFF APPEARS!');
+            const st = this.staffType ? this.staffType() : 'magic_stick';   // one flight staff in six is a Tear of God
+            this.weapons.push(new Weapon(Utils.random(80, this.level.width - 80), -50, st));
+            if (!this.demo && st === 'magic_stick') this.showMessage('THE NIMBUS STAFF APPEARS!');
             AudioSys.playPowerup();
         }
         const staffDef = WEAPONS.magic_stick.durability;
@@ -506,6 +550,11 @@ class Game {
         } else if (!this.demo) {
             this.banner('DRAW', '', '#cfd8dc', 250, 2600);
         }
+        const transitionDelay = this.matchOver ? 5400 : 4000;
+        if (this.mode === 'online') {
+            this.networkTransitionAt = performance.now() + transitionDelay;
+            return; // MultiplayerClient advances the authoritative host; snapshots carry this deadline to guests.
+        }
         setTimeout(() => {
             if (token !== this.roundToken) return;   // a new match started meanwhile
             if (this.state !== 'PLAYING' && this.state !== 'PAUSED' && !(this.demo && this.state === 'MENU')) return;
@@ -514,7 +563,7 @@ class Game {
             this.levelNum++;
             if (this.demo) this.demoCast();
             this.startLevel();
-        }, this.matchOver ? 5400 : 4000);
+        }, transitionDelay);
     }
 
     // Controller Party lobby: controllers press A, keyboard players press their
@@ -612,8 +661,19 @@ class Game {
             AudioSys.playPowerup();
             return;
         }
+        // The Tear of God: a rare one-shot drop (0.5%; ?testtear=1 makes it 80% so it can be tried), never two at once
+        if (typeof WEAPONS !== 'undefined' && WEAPONS.godtear && Math.random() < Game.tearChance() && !this.weapons.some(w => w.active && w.type === 'godtear') && !this.players.some(p => p.weapon && p.weapon.type === 'godtear')) {
+            this.weapons.push(new Weapon(Utils.random(50, this.level.width - 50), -50, 'godtear'));
+            AudioSys.playPowerup();
+            return;
+        }
         // Crystal arenas hand out the Nimbus Staff far more often: a way to fight the angel
-        const type = this.levelNum % 5 === 0 && Math.random() < 0.4 ? 'magic_stick' : WeaponDefs.randomType(this.level.material);   // themed drops (weapon-themes.js)
+        // Outside angel rounds the flight staff drops 1.5x as often (in angel rounds it is already common), and whenever one
+        // is about to drop, one time in six it is a Tear of God instead
+        WeaponDefs.boost = this.levelNum % 5 === 0 ? null : { magic_stick: 1.5 };
+        let type = this.levelNum % 5 === 0 && Math.random() < 0.4 ? 'magic_stick' : WeaponDefs.randomType(this.level.material);   // themed drops (weapon-themes.js)
+        WeaponDefs.boost = null;
+        if (type === 'magic_stick' && this.staffType) type = this.staffType();
         const x = Utils.random(50, this.level.width - 50);
         this.weapons.push(new Weapon(x, -50, type));
         AudioSys.playPowerup();
@@ -637,4 +697,5 @@ class Game {
 // Start game
 window.onload = () => {
     window.game = new Game();
+    window.game.multiplayer = new MultiplayerClient(window.game);
 };

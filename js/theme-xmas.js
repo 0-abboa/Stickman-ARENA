@@ -50,12 +50,15 @@
             for (let i = 0; i < 9; i++) {
                 const u = rng(), ty = y - h * (0.15 + u * 0.7), half = w * (1 - u * 0.85) * 0.8;
                 const ox = x + (rng() - 0.5) * 2 * half, rgb = BULBS[i % BULBS.length];
-                ctx.fillStyle = `rgb(${rgb})`; ctx.beginPath(); ctx.arc(ox, ty, Math.max(1.2, h * 0.025), 0, Math.PI * 2); ctx.fill();
-                glow(ctx, ox, ty, h * 0.07, rgb, 0.4);
+                // ornaments are small diamonds, not round dots
+                const r = Math.max(1.2, h * 0.025);
+                ctx.fillStyle = `rgb(${rgb})`; ctx.beginPath(); ctx.moveTo(ox, ty - r * 1.4); ctx.lineTo(ox + r, ty); ctx.lineTo(ox, ty + r * 1.4); ctx.lineTo(ox - r, ty); ctx.closePath(); ctx.fill();
             }
             // star on top
             const sy = y - h * 0.1 - 3 * h * 0.22 - h * 0.36;
-            glow(ctx, x, sy, h * 0.22, '255,230,120', 0.7);
+            // the star's halo is a soft diamond, not a round glow
+            ctx.fillStyle = 'rgba(255,230,120,0.22)'; ctx.beginPath();
+            ctx.moveTo(x, sy - h * 0.24); ctx.lineTo(x + h * 0.2, sy); ctx.lineTo(x, sy + h * 0.24); ctx.lineTo(x - h * 0.2, sy); ctx.closePath(); ctx.fill();
             ctx.fillStyle = '#ffe082'; ctx.beginPath();
             for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, r = (i % 2 ? 0.4 : 1) * h * 0.06; ctx.lineTo(x + Math.cos(a) * r, sy + Math.sin(a) * r); }
             ctx.closePath(); ctx.fill();

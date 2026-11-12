@@ -45,7 +45,7 @@
     WeaponDefs.themeWeight = function (type, theme) {
         const d = WEAPONS[type];
         if (!d || !d.weight) return 0;
-        return d.weight * (1 + 2.2 * WeaponDefs.affinity(type, theme));
+        return d.weight * (1 + 2.2 * WeaponDefs.affinity(type, theme)) * ((WeaponDefs.boost && WeaponDefs.boost[type]) || 1);
     };
 
     // Chance of each weapon dropping in a theme, highest first: [{ type, name, p }]

@@ -181,6 +181,12 @@
     const landmarkBase = L.landmark;
     L.landmark = function (ctx, rng, W, H, s, Mx) {
         const x = Mx + (W - 2 * Mx) * s.x, y = H * s.y, z = s.size, c = s.c || ['#333', '#111'];
+        // Landmark palettes may mix CSS hex colors with the RGB triplets used by
+        // older glow painters. Canvas rgba() only accepts the latter inside it.
+        const asRgb = (color, fallback) => {
+            const value = color || fallback;
+            return typeof value === 'string' && value[0] === '#' ? BG.rgb(value).join(',') : value;
+        };
         const glow = (gx, gy, r, rgb, a) => { ctx.save(); ctx.globalCompositeOperation = 'lighter'; const g = ctx.createRadialGradient(gx, gy, 1, gx, gy, r); g.addColorStop(0, `rgba(${rgb},${a})`); g.addColorStop(1, `rgba(${rgb},0)`); ctx.fillStyle = g; ctx.fillRect(gx - r, gy - r, r * 2, r * 2); ctx.restore(); };
         switch (s.kind) {
             case 'spireTower':
@@ -188,8 +194,9 @@
                 ctx.beginPath(); ctx.moveTo(x - z * 0.18, y); ctx.lineTo(x - z * 0.08, y - z * 1.6); ctx.lineTo(x + z * 0.08, y - z * 1.6); ctx.lineTo(x + z * 0.18, y); ctx.closePath(); ctx.fill();
                 ctx.fillRect(x - z * 0.22, y - z * 1.15, z * 0.44, z * 0.1);
                 ctx.fillRect(x - 1, y - z * 2.1, 2, z * 0.5);
-                glow(x, y - z * 2.1, z * 0.4, c[1] || '255,60,90', 0.8);
-                ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = `rgba(${c[1] || '255,60,90'},0.6)`;
+                const towerGlow = asRgb(c[1], '255,60,90');
+                glow(x, y - z * 2.1, z * 0.4, towerGlow, 0.8);
+                ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = `rgba(${towerGlow},0.6)`;
                 for (let i = 0; i < 8; i++) ctx.fillRect(x - z * 0.06, y - z * (0.2 + i * 0.17), z * 0.12, 2);
                 ctx.restore();
                 return;
@@ -240,9 +247,10 @@
                 ctx.beginPath(); ctx.moveTo(x + z * 0.4, y - z * 1.5); ctx.lineTo(x + z * 0.56, y - z * 1.85); ctx.lineTo(x + z * 0.72, y - z * 1.5); ctx.fill();
                 ctx.fillRect(x - z * 0.6, y - z * 1.3, z * 0.12, z * 0.3);
                 ctx.save(); ctx.globalCompositeOperation = 'lighter';
-                for (const [wx, wy] of [[-0.55, -0.5], [-0.25, -0.5], [0.15, -0.5], [0.5, -1.25], [-0.1, -0.95]]) { ctx.fillStyle = `rgba(${c[1] || '255,200,90'},0.8)`; ctx.fillRect(x + wx * z, y + wy * z, z * 0.09, z * 0.13); }
+                const windowGlow = asRgb(c[1], '255,200,90');
+                for (const [wx, wy] of [[-0.55, -0.5], [-0.25, -0.5], [0.15, -0.5], [0.5, -1.25], [-0.1, -0.95]]) { ctx.fillStyle = `rgba(${windowGlow},0.8)`; ctx.fillRect(x + wx * z, y + wy * z, z * 0.09, z * 0.13); }
                 ctx.restore();
-                glow(x, y - z * 0.6, z, c[1] || '255,200,90', 0.15);
+                glow(x, y - z * 0.6, z, windowGlow, 0.15);
                 return;
             }
             case 'bigMoon': {

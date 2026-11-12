@@ -37,9 +37,13 @@ const BackdropScenery = {
                     }
                 } else {
                     ctx.fillRect(x - 1.5 * s, y - 10 * s, 3 * s, 10 * s);
-                    ctx.beginPath(); ctx.arc(x, y - 16 * s, 9 * s, 0, Math.PI * 2); ctx.fill();
+                    // faceted crown, no circles
+                    ctx.beginPath();
+                    ctx.moveTo(x - 6 * s, y - 10 * s); ctx.lineTo(x - 9 * s, y - 16 * s); ctx.lineTo(x - 5 * s, y - 24 * s);
+                    ctx.lineTo(x + 2 * s, y - 26 * s); ctx.lineTo(x + 9 * s, y - 20 * s); ctx.lineTo(x + 8 * s, y - 12 * s); ctx.lineTo(x + 6 * s, y - 10 * s);
+                    ctx.closePath(); ctx.fill();
                     ctx.fillStyle = 'rgba(255,240,180,0.18)';
-                    ctx.beginPath(); ctx.arc(x - 3 * s, y - 19 * s, 5 * s, 0, Math.PI * 2); ctx.fill();
+                    ctx.beginPath(); ctx.moveTo(x - 4 * s, y - 20 * s); ctx.lineTo(x - 1 * s, y - 26 * s); ctx.lineTo(x - 2 * s, y - 18 * s); ctx.closePath(); ctx.fill();
                 }
             }
         });
@@ -114,7 +118,13 @@ const BackdropScenery = {
             ctx.fillStyle = '#7cb85c';
             ctx.beginPath(); ctx.ellipse(x, y, w / 2, 8, 0, 0, Math.PI * 2); ctx.fill();
             ctx.fillStyle = '#4e8c3a';
-            ctx.beginPath(); ctx.arc(x + (rng() - 0.5) * w * 0.4, y - 14, 10, 0, Math.PI * 2); ctx.fill();
+            {
+                // a faceted little canopy instead of a round one
+                const tx = x + (rng() - 0.5) * w * 0.4;
+                ctx.beginPath();
+                [[-10, -3], [-6, -10], [1, -13], [8, -9], [10, -2], [4, 4], [-5, 4]].forEach(([px, py], i) => i ? ctx.lineTo(tx + px, y + py - 10) : ctx.moveTo(tx + px, y + py - 10));
+                ctx.closePath(); ctx.fill();
+            }
             // Waterfall
             if (rng() < 0.6) {
                 const wx = x + (rng() - 0.5) * w * 0.6;

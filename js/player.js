@@ -127,7 +127,7 @@ class Player {
         // Bird Touch Kill Logic
         if (this.isBird) {
              game.players.forEach(p => {
-                 if (p !== this && !p.isDead && p.team !== this.team && Utils.rectIntersect(this, p)) {
+                 if (p !== this && !p.isDead && p.team !== this.team && this.touchesPlayer(p)) {
                      p.lastHitType = 'bird_crystal'; p.lastHitAt = game.frameCount;
                      p.takeDamage(1, this); // Continuous damage instead of oneshot
                      if (game.frameCount % 10 === 0) { // Effect every few frames
@@ -149,6 +149,8 @@ class Player {
     // virtual controller, so both go through the exact same applyInput rules.
     readInput(game) {
         if (game.state === 'PAUSED') return Player.IDLE;   // menu open: you stand there while the match goes on
+        if (game.mode === 'online' && game.multiplayer?.uiPaused && game.multiplayer.localSeats?.includes(this.id)) return Player.IDLE;
+        if (this.inputType === 'network') return game.networkInputs?.[this.id] || Player.IDLE;
         return game.inputManager.getPlayerInput(this.id, this.inputType);
     }
 
@@ -157,10 +159,17 @@ class Player {
         if (this.isBird || this.onCloud) {
             if (this.isLaying) { this.y -= 30; this.height = 60; this.isLaying = false; }   // fliers never lie down
             // Bird/Angel/Cloud Flight Physics
-            const flySpeed = this.speed * 1.5;
-            if (input.x !== 0) this.velocity.x += input.x * 0.5;
-            if (input.jump) this.velocity.y -= 0.5; // Fly up
-            if (input.y > 0) this.velocity.y += 0.5; // Fly down
+            if (input.touch) {
+                // Touch: the stick alone flies the fighter, in any direction. Any push past the dead zone
+                // goes at full speed, and letting go hovers. Jump and lie-down do nothing in the air.
+                const tv = 8, m = Math.hypot(input.stick.x, input.stick.y), k = m > 0.15 ? tv / m : 0;
+                this.velocity.x += (input.stick.x * k - this.velocity.x) * 0.2;
+                this.velocity.y += (input.stick.y * k - this.velocity.y) * 0.2;
+            } else {
+                if (input.x !== 0) this.velocity.x += input.x * 0.5;
+                if (input.jump) this.velocity.y -= 0.5; // Fly up
+                if (input.y > 0) this.velocity.y += 0.5; // Fly down
+            }
             
             // Cap speed
             const maxSpeed = 8;
@@ -215,14 +224,14 @@ class Player {
             this.facing = input.aimX > 0 ? 1 : -1;
         }
 
-        // Jump
-        if (input.jump) {
+        // Jump (the touch stick pushed up counts as a jump on the ground)
+        const jumpHeld = input.jump || input.stickJump;
+        if (jumpHeld) {
             if (!this.jumpPressed) {
                 if (this.wings || this.onCloud) {
                     this.velocity.y = -5; // Fly
                 } else if (this.grounded || this.jumpCount < this.maxJumps) {
                     let force = this.jumpForce;
-                    if (input.isMobileJump) force *= 1.5; // Higher jump for mobile
                     
                     this.velocity.y = -force;
                     this.grounded = false;
@@ -276,7 +285,11 @@ class Player {
             if (this.x < 0) { this.x = 0; this.velocity.x *= -1; }
             if (this.x > level.width - this.width) { this.x = level.width - this.width; this.velocity.x *= -1; }
             if (this.y < 0) { this.y = 0; this.velocity.y *= -1; }
-            if (this.y > level.height - this.height) { this.y = level.height - this.height; this.velocity.y *= -1; }
+            // Liquid arenas kill at voidSurface (26px above the canvas edge), so
+            // the old screen-edge bounce happened after the fatal-surface check.
+            const flightFloor = level.voidSurface === undefined ? level.height : level.voidSurface;
+            const maxY = Math.max(0, flightFloor - this.height - 1);
+            if (this.y > maxY) { this.y = maxY; this.velocity.y = -Math.abs(this.velocity.y); }
             return;
         }
 
@@ -319,6 +332,19 @@ class Player {
             if (!Utils.rectIntersect(this, platform)) continue;
             if (platform.motion) { this.resolveMover(platform, axis); continue; }
             if (axis === 'x') {
+                // A rope bridge is made of short adjacent planks. Let a grounded fighter step onto
+                // the next plank from its side when the rise is shallow; otherwise each plank acts
+                // like a tiny wall because it is first touched before horizontal overlap exists.
+                const feet0 = this._oy + this.height;
+                const bridgeRise = feet0 - platform.y;
+                const bridgeStep = platform.bridgeStep || (platform.bridgeStepZones || []).some(([x0, x1]) => this.x < x1 && this.x + this.width > x0);
+                if (bridgeStep && this.velocity.y >= -1 && bridgeRise >= -2 && bridgeRise <= 24) {
+                    this.y = platform.y - this.height;
+                    this.velocity.y = Math.min(0, this.velocity.y);
+                    this.grounded = true;
+                    this.ridePlat = platform;
+                    continue;
+                }
                 // Already inside it before we moved (never push through to the far side)
                 if (this._ox < platform.x + platform.width && this._ox + this.width > platform.x &&
                     this._oy < platform.y + platform.height && this._oy + this.height > platform.y) {
@@ -413,7 +439,7 @@ class Player {
 
         for (let i = 0; i < weapons.length; i++) {
             const w = weapons[i];
-            if (w.active && !w.owner && !(w.lock > 0) && Utils.rectIntersect(this, w.box())) {
+            if (w.active && !w.owner && !(w.lock > 0) && this.intersectsRect(w.box())) {
                 if (players && this.outbid(w, players)) continue;
                 if (this.weapon) {
                     if (w.type === this.weapon.type) continue;
@@ -429,12 +455,18 @@ class Player {
                 if (w.type === 'bird_crystal') {
                     this.wings = true;
                     this.isBird = true;
+                    this.grounded = false; this.ridePlat = null;
+                    this.velocity.x = Math.max(-3.2, Math.min(3.2, this.velocity.x)); this.velocity.y = 0;
+                    this.env = { grip: 1, speed: 1, jump: 1, grav: 1 };
                     this.maxHealth = 300; // Boss Health
                     this.health = this.maxHealth; 
                     this.color = '#FFFFFF'; // White Angel
                     AudioSys.playAngelicaFinale(); // Dramatic music
                 } else if (w.type === 'magic_stick') {
                     this.onCloud = true;
+                    this.grounded = false; this.ridePlat = null;
+                    this.velocity.x = Math.max(-3.2, Math.min(3.2, this.velocity.x)); this.velocity.y = 0;
+                    this.env = { grip: 1, speed: 1, jump: 1, grav: 1 };
                     AudioSys.playPowerup();
                 }
                 break;
@@ -450,7 +482,7 @@ class Player {
             if (o === this || o.isDead || o.isGhost) continue;
             if (o.weapon && !(o.isLaying && !o.swapLatch)) continue;     // already armed and not swapping
             if (o.weapon && o.weapon.type === w.type) continue;
-            if (!Utils.rectIntersect(o, box)) continue;
+            if (!o.intersectsRect(box)) continue;
             if (!this.isBot !== !o.isBot) { if (!o.isBot) return true; continue; }
             const dOther = Math.abs(o.x + o.width / 2 - wx), dMe = Math.abs(this.x + this.width / 2 - wx);
             if (dOther < dMe) return true;

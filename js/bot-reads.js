@@ -326,6 +326,18 @@ Object.assign(BotBrain.prototype, {
                     age: 0, spec, owner: me, returning: false, bounces: spec.bounces || 0, target: null };
         const box = { x: 0, y: 0, size: spec.size + (spec.blast ? spec.blast.radius * 0.6 : 0) };
         const o = BotSim.ghost(opp);
+        // Lower tiers estimate a moving opponent imperfectly. Keep the error
+        // deterministic during this frame so repeated trajectory checks agree.
+        const aimError = this.profile.aimError || 0;
+        if (aimError) {
+            const id = opp.ref ? opp.ref.id : 0;
+            const noise = (seed) => {
+                const n = Math.sin(seed) * 43758.5453;
+                return (n - Math.floor(n)) * 2 - 1;
+            };
+            o.x += noise(this.frame * 12.9898 + me.id * 78.233 + id * 37.719) * aimError;
+            o.y += noise(this.frame * 39.3467 + me.id * 11.135 + id * 91.117) * aimError * 0.55;
+        }
         o.jumpPressed = true;
         if (spec.homing) s.target = o;   // a seeker locks on to them
         const oin = this.scratchInput2(Math.abs(opp.velocity.x) > 1 ? Math.sign(opp.velocity.x) : 0,
@@ -355,7 +367,39 @@ Object.assign(BotBrain.prototype, {
     pathOf(pr, n) {
         let c = this.pathCache.get(pr);
         if (!c || c.frame !== this.frame) {
-            c = { frame: this.frame, path: Projectile.predict(pr, this.world, n || 50) };
+            const steps = n || 50, portals = pr.spec && pr.spec.divine && this.game.level.features
+                ? this.game.level.features.filter(f => f.kind === 'portals' && f.a && f.b) : [];
+            let path;
+            if (portals.length) {
+                const s = { x: pr.x, y: pr.y, vx: pr.vx, vy: pr.vy, vx0: pr.vx0, life: pr.life, age: pr.age,
+                    spec: pr.spec, owner: pr.owner, returning: pr.returning, bounces: pr.bounces, target: pr.target,
+                    stuck: pr.stuck, portalCd: pr.portalCd };
+                let skip = Math.max(0, (pr.portalCd || 0) - (this.game.frameCount || 0));
+                path = [];
+                let alive = true;
+                for (let k = 0; k < steps; k++) {
+                    if (!alive) { path.push(null); continue; }
+                    const px = s.x, py = s.y, ev = Projectile.step(s, this.world);
+                    if (ev === 'expire' || ev === 'caught' || ev === 'platform') {
+                        alive = false;
+                        path.push(null);
+                        continue;
+                    }
+                    if (skip > 0) skip--;
+                    else {
+                        let moved = false;
+                        for (const f of portals) {
+                            for (const [from, to] of [[f.a, f.b], [f.b, f.a]]) {
+                                if (!Features.KINDS.portals.crossed(from, px, py, s.x, s.y)) continue;
+                                s.x += to.x - from.x; s.y += to.y - from.y; skip = 2; moved = true; break;
+                            }
+                            if (moved) break;
+                        }
+                    }
+                    path.push({ x: s.x, y: s.y, r: pr.size / 2 + 4 });
+                }
+            } else path = Projectile.predict(pr, this.world, steps);
+            c = { frame: this.frame, path };
             this.pathCache.set(pr, c);
         }
         return c.path;

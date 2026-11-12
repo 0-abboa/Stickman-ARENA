@@ -5,30 +5,35 @@
 const BOT_PROFILES = {
     easy: {
         label: 'BEGINNING', color: '#43a047', shades: ['#43a047', '#66bb6a', '#2e7d32', '#8bc34a', '#00897b', '#558b2f'],
-        reaction: 30, think: [6, 10], noise: 0.35, spacingErr: 30, aggression: 0.35, hesitate: 0.3, adapt: false, weaponRace: 0.4, fly: 5, dodgeRate: 0.12,
-        skills: { shield: 0.15, dodge: 0, edgeguard: 0, lethal: 0, crouchFire: 0, recover: 0.55, punish: 0.25, crossup: 0 }
+        reaction: 42, think: [10, 16], noise: 0.52, aimError: 24, spacingErr: 48, aggression: 0.24, hesitate: 0.48, adapt: false, weaponRace: 0.3, fly: 4.6, dodgeRate: 0.06,
+        divineDodgeRate: 0.12, divineReaction: 14,
+        skills: { shield: 0.08, dodge: 0, edgeguard: 0, lethal: 0, crouchFire: 0, divineLoop: 0, divineSlide: 0, recover: 0.4, punish: 0.12, crossup: 0 }
     },
     medium: {
         label: 'INTERMEDIATE', color: '#fb8c00', shades: ['#fb8c00', '#ffa726', '#ef6c00', '#ffb300', '#f4511e', '#ff9800'],
-        reaction: 20, think: [3, 6], noise: 0.18, spacingErr: 18, aggression: 0.6, hesitate: 0.16, adapt: true, weaponRace: 0.7, fly: 6.2, dodgeRate: 0.3,
-        skills: { shield: 0.4, dodge: 0.35, edgeguard: 0.15, lethal: 0.3, crouchFire: 0.1, recover: 0.85, punish: 0.5, crossup: 0.2 }
+        reaction: 28, think: [5, 9], noise: 0.3, aimError: 13, spacingErr: 24, aggression: 0.48, hesitate: 0.24, adapt: true, weaponRace: 0.58, fly: 5.7, dodgeRate: 0.2,
+        divineDodgeRate: 0.4, divineReaction: 8,
+        skills: { shield: 0.28, dodge: 0.2, edgeguard: 0.08, lethal: 0.18, crouchFire: 0.05, divineLoop: 0.3, divineSlide: 0.24, recover: 0.72, punish: 0.3, crossup: 0.1 }
     },
     hard: {
         label: 'ADVANCED', color: '#e53935', shades: ['#e53935', '#ff5252', '#c62828', '#d81b60', '#ff1744', '#b71c1c'],
         reaction: 12, think: [2, 3], noise: 0.07, spacingErr: 8, aggression: 0.85, hesitate: 0.06, adapt: true, weaponRace: 0.9, fly: 7.2, dodgeRate: 0.4,
-        skills: { shield: 0.74, dodge: 0.68, edgeguard: 0.62, lethal: 0.8, crouchFire: 0.58, recover: 0.96, punish: 0.82, crossup: 0.52 }
+        divineDodgeRate: 0.78, divineReaction: 4,
+        skills: { shield: 0.74, dodge: 0.68, edgeguard: 0.62, lethal: 0.8, crouchFire: 0.58, divineLoop: 0.76, divineSlide: 0.68, recover: 0.96, punish: 0.82, crossup: 0.52 }
     },
     nightmare: {
         label: 'PROFESSIONAL', color: '#8e24aa', shades: ['#8e24aa', '#ab47bc', '#6a1b9a', '#7b1fa2', '#ba68c8', '#4a148c'],
         reaction: 6, think: [1, 1], noise: 0.01, spacingErr: 3, aggression: 0.97, hesitate: 0.01, adapt: true, weaponRace: 1, fly: 8, dodgeRate: 0.55,
-        skills: { shield: 0.92, dodge: 0.93, edgeguard: 0.95, lethal: 1, crouchFire: 0.92, recover: 1, punish: 0.98, crossup: 0.85 }
+        divineDodgeRate: 0.93, divineReaction: 2,
+        skills: { shield: 0.92, dodge: 0.93, edgeguard: 0.95, lethal: 1, crouchFire: 0.92, divineLoop: 0.92, divineSlide: 0.88, recover: 1, punish: 0.98, crossup: 0.85 }
     },
     // As skilled as the bot can be: near-instant reactions, no fumbles, every
     // technique every time. Still the same body and rules as a player.
     hack: {
         label: 'HACK', color: '#18ffff', shades: ['#18ffff', '#00e5ff', '#84ffff', '#00b8d4', '#40c4ff', '#0091ea'],
-        reaction: 2, think: [1, 1], noise: 0, spacingErr: 1, aggression: 1, hesitate: 0, adapt: true, weaponRace: 1, fly: 8, dodgeRate: 0.92,
-        skills: { shield: 1, dodge: 1, edgeguard: 1, lethal: 1, crouchFire: 1, recover: 1, punish: 1, crossup: 0.9 }
+        reaction: 2, think: [1, 1], noise: 0, aimError: 0, spacingErr: 1, aggression: 1, hesitate: 0, adapt: true, weaponRace: 1, fly: 8, dodgeRate: 0.92,
+        divineDodgeRate: 0.99, divineReaction: 0,
+        skills: { shield: 1, dodge: 1, edgeguard: 1, lethal: 1, crouchFire: 1, divineLoop: 0.98, divineSlide: 0.98, recover: 1, punish: 1, crossup: 0.9 }
     }
 };
 
@@ -113,8 +118,17 @@ class BotBrain {
         this.trackFrustration();
         this.trackModels(game);
         if (this.frame % 30 === 0) this.jitter = (Math.random() * 2 - 1) * this.profile.spacingErr;
-        if (!this.intent || this.frame >= this.nextThink) {
+        // An angel that just died can't be chased any more: re-plan now instead of finishing the old angel intent
+        const angelDown = this.intentFor && this.intentFor.isBird && this.intentFor.isDead;
+        const holdingDodgePlan = this.intent && this.intent.dodging && this.frame < this.nextThink;
+        const divineThreat = !holdingDodgePlan && game.projectiles.some(pr => {
+            if (!pr.active || !pr.spec || !pr.spec.divine || pr.owner === me || (pr.owner && pr.owner.team === me.team) || pr.age < (this.profile.divineReaction || 0)) return false;
+            const path = this.pathOf(pr, 42);
+            return BotSim.hitBy(me, BotSim.plan(0, 999, 0), this.world, [path], 38) >= 0;
+        });
+        if (!this.intent || this.frame >= this.nextThink || angelDown || divineThreat) {
             this.intent = this.decide(game);
+            this.intentFor = this.target ? this.target.ref : null;
             const [a, b] = this.profile.think;
             this.nextThink = this.frame + a + Math.floor(Math.random() * (b - a + 1));
             // Now and then a person just... pauses. Gives the opponent openings.
@@ -166,7 +180,8 @@ class BotBrain {
             cd: p.attackCooldown, shield: p.shieldActive, shieldCd: p.shieldCd || 0, health: p.health, maxHealth: p.maxHealth,
             weapon: p.weapon ? p.weapon.type : null, dead: p.isDead, frame: this.frame, ridePlat: p.ridePlat, kills: p.kills || 0,
             speedMul: p.speedMul || 1, stunned: !!(p.status && p.status.stun > 0), frozen: !!(p.status && p.status.freeze > 0),
-            dot: p.status ? (p.status.burn > 0 ? 1 : 0) + (p.status.poison > 0 ? 1 : 0) : 0
+            dot: p.status ? (p.status.burn > 0 ? 1 : 0) + (p.status.poison > 0 ? 1 : 0) : 0,
+            env: p.env
         };
     }
 
@@ -189,8 +204,19 @@ class BotBrain {
         if (!h || !h.length) return null;
         const lag = Math.min(this.profile.reaction, h.length - 1);
         const snap = h[h.length - 1 - lag];
+        if (lag === 0 || snap.dead) return Object.assign({}, snap);
+        // Target picking, bestPrize and tactics all ask for the same fighter in the same frame:
+        // replay the physics once per frame and hand out copies
+        const memo = this.seenMemo || (this.seenMemo = new Map());
+        const hit = memo.get(p);
+        if (hit && hit.frame === this.frame && hit.n === h.length && hit.lag === lag) return Object.assign({}, hit.out, { velocity: Object.assign({}, hit.out.velocity) });
+        const out = this.replay(snap, lag);
+        memo.set(p, { frame: this.frame, n: h.length, lag, out });
+        return Object.assign({}, out, { velocity: Object.assign({}, out.velocity) });
+    }
+
+    replay(snap, lag) {
         const out = Object.assign({}, snap);
-        if (lag === 0 || snap.dead) return out;
         const g = BotSim.ghost(snap);
         g.jumpPressed = true;   // a held jump keeps rising without triggering a new jump
         const rising = snap.velocity.y < 0 && !snap.grounded;
@@ -210,10 +236,24 @@ class BotBrain {
         const lag = this.profile.reaction;
         for (const pr of game.projectiles) {
             if (!pr.active || pr.owner === this.body || (pr.owner && pr.owner.team === this.body.team)) continue;
-            if (pr.age < lag) continue;
+            const delay = pr.spec && pr.spec.divine ? (this.profile.divineReaction || 0) : lag;
+            if (pr.age < delay) continue;
             out.push(pr);
         }
         return out;
+    }
+
+    readProjectileThreats(it, projs) {
+        if (!projs || !projs.length) return;
+        const reads = this.dodgeReads || (this.dodgeReads = new WeakMap());
+        const seen = projs.filter(pr => {
+            if (!reads.has(pr)) {
+                const chance = pr.spec && pr.spec.divine ? (this.profile.divineDodgeRate || 0) : (this.profile.dodgeRate || 0);
+                reads.set(pr, Math.random() < chance);
+            }
+            return reads.get(pr);
+        });
+        if (seen.length) this.dodgeProjectiles(it, seen);
     }
 
     pickTarget(game) {
@@ -367,6 +407,7 @@ class BotBrain {
         if (game.roundOver || (!opp && !game.weapons.some(w => w.active && !w.owner))) { this.tacticCelebrate(it); return it; }
         if (this.wander && this.frame < this.wander.until && !me.isBird && !me.onCloud && !(opp && opp.isBird)) {
             this.tacticWander(it);
+            this.readProjectileThreats(it, projs);
             this.applyDefense(it, opp, projs);
             return it;
         }
@@ -386,15 +427,8 @@ class BotBrain {
             else if (opp && ranged) this.tacticRanged(it, opp);
             else if (opp) { this.lurkSince = 0; this.tacticMelee(it, opp); }
             else this.tacticIdle(it);
-            // Each shot gets one honest read: the tier's dodge rate decides whether
-            // we even react to it (Nightmare reads about 60%, so it still gets hit)
-            const reads = this.dodgeReads || (this.dodgeReads = new WeakMap());
-            const seen = projs.filter(pr => {
-                if (!reads.has(pr)) reads.set(pr, Math.random() < (P.dodgeRate || 0));
-                return reads.get(pr);
-            });
-            if (seen.length) this.dodgeProjectiles(it, seen);
         }
+        this.readProjectileThreats(it, projs);
         this.applyDefense(it, opp, projs);
         this.applyNoise(it);
         return it;
